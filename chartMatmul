@@ -1,0 +1,117 @@
+#!/usr/bin/perl
+
+#    Copyright 2010 Chris Jang
+#
+#    This file is part of GATLAS.
+#
+#    GATLAS is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU Lesser General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    GATLAS is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU Lesser General Public License for more details.
+#
+#    You should have received a copy of the GNU Lesser General Public License
+#    along with GATLAS.  If not, see <http://www.gnu.org/licenses/>.
+
+use strict;
+use warnings;
+use File::Find;
+
+#######################
+# data
+my %matrixsize;
+my %bestgflops;
+my %bestgroupsize;
+my %bestblockheight;
+my %bestextraparam;
+
+#######################
+# utility subroutines
+sub readfile {
+  my ($filename, $subref) = @_;
+  open my ($fh), $filename or die "error: open $filename";
+  while (<$fh>) {
+    chomp;
+    $subref->($_);
+  }
+  close $fh;
+}
+
+sub printreport {
+  my ($kerneltype, $description, $bestmap) = @_;
+  print join("\t", "kernel type", "description", "matrix size", "A B", "At B", "A Bt", "At Bt") . "\n";
+  foreach my $matrixsize (sort {$a <=> $b} keys %{$matrixsize{$kerneltype}}) {
+    print join("\t", $kerneltype, $description, $matrixsize);
+    foreach my $transAB ("", "_a", "_b", "_a_b") {
+      print "\t" . $bestmap->{$kerneltype}{$transAB}{$matrixsize};
+    }
+    print "\n";
+  }
+}
+
+#######################
+# command line processing
+if (2 != scalar(@ARGV)) {
+  print "usage: $0 output_directory mm|gemm\n";
+  exit 1;
+}
+my $OUTPUTDIR=$ARGV[0];
+my $CALCTYPE=$ARGV[1];
+
+#######################
+# read benchmark output files
+find(
+  sub {
+    if (/b$CALCTYPE\_(buffer|image)([^\.]*)\.(\d+)$/) {
+      my ($kerneltype, $transAB, $matrixsize) = ($1, $2, $3);
+      $matrixsize{$kerneltype}{$matrixsize}++;
+      my ($gflops, $groupsize, $blockheight, $extraparam);
+      readfile( $_,
+        sub {
+          my ($s) = @_;
+          ($gflops, $groupsize, $blockheight, $extraparam) = ($1, $2, $3, $4)
+            if $s =~ /^\[0\] \d+ usec\savg: ([^\s]+)\sstddev: [^\s]+\s\d+\s\d+\s\d+\s(\d+)\s(\d+)\s(\d+)\s/;
+        });
+      $gflops = "" if not defined $gflops;
+      $groupsize = "" if not defined $groupsize;
+      $blockheight = "" if not defined $blockheight;
+      $extraparam = "" if not defined $extraparam;
+      $bestgflops{$kerneltype}{$transAB}{$matrixsize} = $gflops;
+      $bestgroupsize{$kerneltype}{$transAB}{$matrixsize} = $groupsize;
+      $bestblockheight{$kerneltype}{$transAB}{$matrixsize} = $blockheight;
+      $bestextraparam{$kerneltype}{$transAB}{$matrixsize} = $extraparam;
+    }
+  },
+  $OUTPUTDIR);
+
+#######################
+# print output
+
+# gflops versus matrix size
+printreport("buffer", "gflops", \%bestgflops);
+print "\n";
+printreport("image", "gflops", \%bestgflops);
+print "\n";
+
+# work group size versus matrix size
+printreport("buffer", "groupsize", \%bestgroupsize);
+print "\n";
+printreport("image", "groupsize", \%bestgroupsize);
+print "\n";
+
+# inner block height versus matrix size
+printreport("buffer", "blockheight", \%bestblockheight);
+print "\n";
+printreport("image", "blockheight", \%bestblockheight);
+print "\n";
+
+# extra parameter versus matrix size
+printreport("buffer", "extraparam", \%bestextraparam);
+print "\n";
+printreport("image", "extraparam", \%bestextraparam);
+print "\n";
+

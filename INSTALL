@@ -1,0 +1,157 @@
+GATLAS - GPU Automatically Tuned Linear Algebra Software
+
+Chris Jang
+fastkor@gmail.com
+
+May 12 2010
+
+Note: Please read docs/index.html for more detailed explanations.
+
+
+
+****************************************
+* Environment variable prerequisites
+
+The environment variable
+
+    ATISTREAMSDKROOT
+
+must be set to the top-level directory of the ATI Stream SDK installation.
+For example, on my development host, it is:
+
+    $ echo $ATISTREAMSDKROOT
+    /opt/ati-stream-sdk-v2.0-lnx64/
+
+The environment variable
+
+    LD_LIBRARY_PATH
+
+should include the path to the SDK runtime libraries.
+For example, on my development host, it is:
+
+    $ echo $LD_LIBRARY_PATH
+    /opt/ati-stream-sdk-v2.0-lnx64/lib/x86_64:
+
+
+
+****************************************
+* Building the binaries is easy
+
+Run from the command line:
+
+    make
+
+This generates:
+
+    libgatlas.a  - archive of common object code
+
+    oclInfo      - simple utility to check OpenCL device info
+
+    bmm_buffer   - benchmark matrix multiply (memory buffers)
+    bmm_image    - benchmark matrix multiply (images)
+    bgemm_buffer - benchmark general matrix multiply (memory buffers)
+    bgemm_image  - benchmark general matrix multiply (images)
+
+    pmm_buffer   - print matrix multiply kernel source (memory buffers)
+    pmm_image    - print matrix multiply kernel source (images)
+    pgemm_buffer - print general matrix multiply kernel source (memory buffers)
+    pgemm_image  - print general matrix multiply kernel source (images)
+
+The archive libgatlas.a along with the header files:
+
+    Gatlas*.hpp
+    Gatlas*.tcc
+    Kernel*.hpp
+    OCL*.hpp
+    OCL*.tcc
+    declare_namespace
+    using_namespace
+
+comprises the library code.
+
+
+
+****************************************
+* After building comes benchmarking
+
+There are four makefile targets corresponding to different kernel types.
+
+    make benchgemmbuffer    ...benchmark SGEMM for memory buffers
+
+    make benchgemmimage     ...benchmark SGEMM for images
+
+    make benchmmbuffer      ...benchmark matrix multiply for memory buffers
+
+    make benchmmimage       ...benchmark matrix multiply for images
+
+Warning! Benchmarking can take a long time. On my HD 5870, the four targets
+take from one to three hours (memory buffers are slower than images).
+
+To just do everything (same as all four benchmark targets), run
+
+    make benchall
+
+Benchmarks are generated for all transpose combinations of A and B for
+square matrix sizes (means that M, N and K are equal):
+
+    1024, 1280, 1536, ..., 5376, 5632
+    1600, 2400, 3200, 4000, 4800, 5600
+
+The output is written to files in subdirectory ./benchdata .
+
+
+
+****************************************
+* Assemble benchmarks into tabular data
+
+This is fast. It only reads the benchmark data files and munges them
+into tab separated value text files suitable for a spreadsheet or parsing
+by machine.
+
+    make chart
+
+The matrix multiply charts were generated using this tsv text imported
+into an OpenOffice spreadsheet.
+
+
+
+****************************************
+* How to see the kernel source
+
+For given matrix dimensions M, N, K and if input matrices A and B are
+transposed, there are three numbers that determine the kernel source.
+The first number is the 2D work group size. The second number is the
+inner blocking height. The third number is the extra parameter. This
+is interpreted by each kernel implementation differently.
+
+For example, let's say that we have run the benchmarks and made the charts
+as above. In the file chartbmm.tsv are four lines like:
+
+    buffer  gflops          4000    477.791 406.698 486.488 395.538
+    buffer  groupsize       4000    8       8       8       8
+    buffer  blockheight     4000    10      4       10      4
+    buffer  extraparam      4000    10      11      2       8
+
+This means the optimization found the optimal matrix multiply kernel
+using memory buffers for M=4000, N=4000, K=4000 to be:
+
+    if A  * B  then groupsize = 8, blockheight = 10, extraparam = 10
+    if At * B  then groupsize = 8, blockheight = 4, extraparam = 11
+    if A  * Bt then groupsize = 8, blockheight = 10, extraparam = 2
+    if At * Bt then groupsize = 8, blockheight = 4, extraparam = 8
+
+So if we want to print out the kernel source for A * Bt, then:
+
+    ./pmm_buffer -n 4000 -b -g 8 -y 10 -x 2
+
+The optimization is not limited to square dimensions either. If we
+first run:
+
+    ./bmm_buffer -d gpu -m 3000 -n 2000 -k 1000 -a -t 10 -x 10
+
+Then the optimization is for M=3000, N=2000, K=1000 where matrix A
+is transposed. The "-t 10" specifies ten trials. The "-x 10" means
+that after the first trial, only the top ten best performing kernels
+are kept for subsequent trials. Multiple trials are really necessary
+as the sample variance in timings can be high, especially for smaller
+matrix sizes.

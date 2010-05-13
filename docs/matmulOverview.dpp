@@ -1,0 +1,87 @@
+#    Copyright 2010 Chris Jang
+#
+#    This file is part of GATLAS.
+#
+#    GATLAS is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU Lesser General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    GATLAS is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU Lesser General Public License for more details.
+#
+#    You should have received a copy of the GNU Lesser General Public License
+#    along with GATLAS.  If not, see <http://www.gnu.org/licenses/>.
+
+horizontal_layout
+size	9.5	9.5
+
+subgraph	OpenCL code generation
+vertex	GatlasType
+vertex	GatlasFormatting
+vertex	GatlasOperator
+vertex	GatlasQualifier
+vertex	GatlasCodeText
+edge	GatlasQualifier	GatlasFormatting
+edge	GatlasQualifier	GatlasType
+edge	GatlasCodeText	GatlasType
+edge	GatlasCodeText	GatlasQualifier
+edge	GatlasCodeText	GatlasFormatting
+edge	GatlasCodeText	GatlasOperator
+subgraph
+
+subgraph	OpenCL wrappers
+vertex	OCLSTL
+vertex	OCLUtil
+vertex	OCLBase
+vertex	OCLApp
+vertex	OCLAppUtil
+edge	OCLBase	OCLSTL
+edge	OCLApp	OCLSTL
+edge	OCLUtil	OCLSTL
+edge	OCLBase	OCLUtil
+edge	OCLApp	OCLUtil
+edge	OCLApp	OCLBase
+edge	OCLAppUtil	OCLApp
+subgraph
+
+subgraph	Common auto-tune functionality
+vertex	KernelBaseMatmul
+vertex	KernelMatmul
+vertex	KernelGenMatmul
+edge	KernelBaseMatmul	OCLAppUtil
+edge	KernelMatmul	KernelBaseMatmul		grey
+edge	KernelGenMatmul	KernelBaseMatmul		grey
+subgraph
+
+subgraph	GPU kernel source generation
+vertex	KernelMatmulBuffer
+vertex	KernelMatmulImage
+vertex	KernelGenMatmulBuffer
+vertex	KernelGenMatmulImage
+edge	KernelMatmulBuffer	GatlasCodeText
+edge	KernelMatmulImage	GatlasCodeText
+edge	KernelGenMatmulBuffer	GatlasCodeText
+edge	KernelGenMatmulImage	GatlasCodeText
+edge	KernelMatmulBuffer	KernelMatmul		grey
+edge	KernelMatmulImage	KernelMatmul		grey
+edge	KernelGenMatmulBuffer	KernelGenMatmul		grey
+edge	KernelGenMatmulImage	KernelGenMatmul		grey
+subgraph
+
+subgraph	Auto-tune optimizer
+vertex	KernelInterface
+vertex	Bench
+edge	KernelBaseMatmul	KernelInterface		grey
+edge	Bench	OCLApp
+edge	Bench	KernelInterface
+subgraph
+
+subgraph	Command line applications
+vertex	benchMatmul
+edge	benchMatmul	Bench
+vertex	printMatmul
+edge	printMatmul	KernelBaseMatmul
+subgraph

@@ -1,0 +1,598 @@
+<html>
+<title>GATLAS</title>
+<body>
+
+<table>
+ <tr>
+  <td> <img src="Gatling.png"> </td>
+  <td>
+   <table>
+    <tr> <td> <h1>GATLAS</h1> </td> </tr>
+    <tr> <td> <b>G</b>PU <b>A</b>utomatically <b>T</b>uned <b>L</b>inear <b>A</b>lgebra <b>S</b>oftware </td> </tr>
+   </table>
+  </td>
+  <td>
+   <table>
+
+    <tr> <td> <a href="#What_does_GATLAS_do_right_now">What does GATLAS do right now?</a> </td> </tr>
+    <tr> <td> <a href="#Can_I_use_the_fast_kernels_found_by_GATLAS_to_speed_up_my_numerical_application">Can I use the fast kernels found by GATLAS to speed up my numerical application?</a> </td> </tr>
+    <tr> <td> <a href="#Example_problem_of_single_precision_matrix_multiply">Example problem of single precision matrix multiply</a> </td> </tr>
+
+    <tr> <td> <a href="#General_high_level_view_of_everything">General high level view of everything</a> </td> </tr>
+    <tr> <td> <a href="#Conceptual_overview_of_the_auto-tuning_problem_for_matrix_multiply">Conceptual overview of the auto-tuning problem for matrix multiply</a> </td> </tr>
+    <tr> <td> <a href="#Differences_between_the_four_major_matrix_multiply_variants">Differences between the four major matrix multiply variants</a> </td> </tr>
+    <tr> <td> <a href="#Important_functions_for_matrix_multiply">Important functions for matrix multiply</a> </td> </tr>
+
+    <tr> <td> <a href="#How_to_build">How to build</a> </td> </tr>
+    <tr> <td> <a href="#How_to_benchmark">How to benchmark</a> </td> </tr>
+    <tr> <td> <a href="#How_to_use_the_benchmarking_command-line_applications">How to use the benchmarking command-line applications</a> </td> </tr>
+    <tr> <td> <a href="#How_to_print_generated_kernel_source">How to print generated kernel source</a> </td> </tr>
+
+   </table>
+  </td>
+ </tr>
+</table>
+
+<table>
+ <tr>
+  <td> <i>Chris Jang</i> </td>
+ </tr>
+ <tr>
+  <table>
+   <tr>
+    <td><pre>f</pre></td>
+    <td><pre>a</pre></td>
+    <td><pre>s</pre></td>
+    <td><pre>t</pre></td>
+    <td><pre>k</pre></td>
+    <td><pre>o</pre></td>
+    <td><pre>r</pre></td>
+    <td><pre>(</pre></td>
+    <td><pre>a</pre></td>
+    <td><pre>t</pre></td>
+    <td><pre>)</pre></td>
+    <td><pre>g</pre></td>
+    <td><pre>m</pre></td>
+    <td><pre>a</pre></td>
+    <td><pre>i</pre></td>
+    <td><pre>l</pre></td>
+    <td><pre>(</pre></td>
+    <td><pre>d</pre></td>
+    <td><pre>o</pre></td>
+    <td><pre>t</pre></td>
+    <td><pre>)</pre></td>
+    <td><pre>c</pre></td>
+    <td><pre>o</pre></td>
+    <td><pre>m</pre></td>
+   </tr>
+  </table>
+ </tr>
+</table>
+
+<p>
+For the past few months, I've been playing with the ATI OpenCL SDK version 2.0 using a HD 5870 on Ubuntu 9.04 64 bit. The first problem is single precision matrix multiply (including the general level 3 BLAS operation SGEMM). This experience taught me a lot about the current state of GPGPU technology using OpenCL.
+
+<p>
+
+<i>The good:</i>
+OpenCL is capable of good performance. While slower than hand crafted IL/ISA (assembly language), it is easier to automatically tune and optimize. In my opinion, this is also the primary advantage of the LLVM-based OpenCL compiler. It facilitates generating kernels dynamically and combinatorially searching a design space to find good solutions. A static compiler would make automated optimization more difficult.
+
+<p>
+
+<i>The bad:</i>
+Extensive optimization may be required. There is a performance penalty for using OpenCL instead of IL/ISA which necessitates optimization even more. It is (still) difficult to write good kernels from first principles. Improving performance is often trial and error to find the right way to parameterize a kernel implementation. This means the automatic part of the optimization is really only auto-tuning.
+
+<p>
+
+<i>The ugly:</i>
+Runtime metaprogramming is required. Good performance requires exploring a design space of kernel implementations. This leads to an internal DSL (domain specific language) for generating the procedural OpenCL kernel source code. It is a wheel that must be re-invented with great effort. OpenCL may be portable GPGPU. However, significant device specific optimization is required. This is very much non-trivial.
+
+<a name="What_does_GATLAS_do_right_now">
+<h3>What does GATLAS do right now?</h3>
+</a>
+
+It finds OpenCL matrix multiply kernels with good performance. Hand crafted optimization is unlikely to best the generated kernels without resorting to assembly language.
+
+<p>
+
+Out of the box, GATLAS is effectively an auto-tuning benchmark that can characterize the performance of a GPU and OpenCL SDK combination. Most other performance benchmarks are extensively hand-tuned for specific GPU models. It is difficult to know how much performance is the result of human skill and how much is faster hardware or better drivers. As GPUs are &quot;idiosyncratic&quot; devices, the same kernel and runtime settings can exhibit drastically different performance.
+
+<a name="Can_I_use_the_fast_kernels_found_by_GATLAS_to_speed_up_my_numerical_application">
+<h3>Can I use the fast kernels found by GATLAS to speed up my numerical application?</h3>
+</a>
+
+Yes - If you have an application that benefits from a fast matrix multiply (or SGEMM) <i>GPU kernel</i>.
+
+<p>
+
+A more careful answer is that GPGPU is not a drop-in technology for legacy applications designed for CPUs. Using a GPU effectively requires careful scheduling of work between CPU host and GPU device to minimize PCIe bus data transfer costs. Consequently, a GPU math kernel is not really the same as a CPU math kernel in an optimized library.
+
+<p>
+
+The usual thinking (at least what I thought initially) is the following.
+
+<ol>
+ <li> SGEMM is the core math kernel of level 3 BLAS operations. </li>
+ <li> LAPACK is built on BLAS and underlies much numerical software. </li>
+ <li> Optimizing a SGEMM kernel will increase performance of LAPACK. </li>
+ <li> Legacy applications will then benefit for free. </li>
+</ol>
+
+While this may be true to some extent, the gain will likely be much smaller than expected. Most legacy applications software depends on the very high effective bandwidth between memory and CPU. As GPUs currently lack direct access to the host memory hierarchy, the bandwidth between host CPU and GPU device is low in comparison.
+
+<p>
+
+I see GPGPU and OpenCL as a very significant technology. But it requires significant re-thinking of how applications work. It requires design with GPGPU in mind and does not bolt-on. Too make an analogy, the change from desktop to web applications was the same way. Everything changed, from languages to architecture and design. It required a generational shift in software engineering culture. I see the relationship between CPU and GPGPU technology in a similar way.
+
+<a name="Example_problem_of_single_precision_matrix_multiply">
+<h3>Example problem of single precision matrix multiply</h3>
+</a>
+
+Here is single precision matrix multiply performance after optimization. Transposing input matrices A and B affects performance primarily due to changes in the memory access pattern. Note there are no linear algebra transformations (e.g. transpose(A) * transpose(B) is not calculated as transpose(B * A)). SGEMM performance is very similar and only slightly slower (as expected). On the HD 5870, memory buffers are relatively slow (no cache) while the texture units are fast (L1 cache). That is why the image based kernel implementation is much faster than the one using memory buffers.
+
+<table>
+ <tr>
+  <td> <img src="matmul_buffer.png"> </td>
+  <td> <img src="matmul_image.png"> </td>
+ </tr>
+ <tr>
+  <td align="center"> 490 GFLOPS at 5440x5440 for A * Bt </td>
+  <td align="center"> 1045 GFLOPS at 2240x2240 for At * B </td>
+ </tr>
+</table>
+
+<p>
+
+Here is the best work group size and inner blocking height found for some matrix sizes. The memory buffer kernel benefits the most from optimization. Auto-tuning finds significantly faster solutions. For the image kernel, optimization is more about avoiding inherently slow matrix sizes and parameters. Note there are additional kernel parameters not shown here. These affect the inlining of matrix dimensions, inner product loop order and use of global versus group/local work item IDs.
+
+<table>
+ <tr>
+  <td> <img src="matmul_buffer_workgroup.png"> </td>
+  <td> <img src="matmul_image_workgroup.png"> </td>
+ </tr>
+ <tr>
+  <td> <img src="matmul_buffer_blockheight.png"> </td>
+  <td> <img src="matmul_image_blockheight.png"> </td>
+ </tr>
+</table>
+
+
+<a name="Software_design">
+<h2>Software design</h2>
+</a>
+
+<a name="General_high_level_view_of_everything">
+<h3>General high level view of everything</h3>
+</a>
+
+GATLAS currently consists of (general) matrix multiplication in single precision using OpenCL memory buffers and images. It is under active development with more kernels coming (next to work on are optimized SIFT/SURF kernels). There is more to life than matrix multiplication.
+
+<p>
+
+The system was developed organically over several months with many rewrites. I would like to believe the design does not subscribe to any one ideological ethic except practicality. I tried to find reasonable compromises between consistency, flexibility and understandability. In my experience, the best design is an optimal balance that avoids going too far in any direction.
+
+<object data="matmulOverview.svg" type="image/svg+xml">
+ <embed src="matmulOverview.svg" type="image/svg+xml">
+</object>
+
+As I see it, there are naturally six major conceptual parts.
+
+<ol>
+ <li> <u>OpenCL wrappers for convenience</u> - I find a memory-aligned C API like OpenCL somewhat difficult to use. Higher level abstractions improved my productivity. However... I realize that everyone has their own way of using OpenCL. So while I use my own wrapper code extensively, I tried to do it in a way that avoids forcing downstream users to embrace these wrappers. </li>
+ <li> <u>OpenCL metaprogramming for code generation</u> - The OpenCL kernel source is built in a stream. Simple abstractions make it a little easier to avoid lots of string and stream manipulation. The approach may strike you as simple-minded. Originally, I set out to do as much template-based compile-time metaprogramming as possible. It always turned out to be so complex that I could not understand my own code (and it was generating bloated binaries). Eventually, I settled on the approach here. I have also subsequently seen the Apple source code drop of an OpenCL FFT kernel. I noticed their design is also simple-minded and builds kernel source in strings. </li>
+ <li> <u>Common auto-tuning functionality for kernels</u> - The matrix dimensions constrain the compatible inner and outer blocking of the problem. The inner blocking determines how many float4s are read into registers to be accumulated into inner product quads of output. The inner and outer blocking together determine the work item group dimensions. I use square work groups (e.g. 8 x 8). <i>(Note that rectangular work groups are possible for matrix multiply, I just did not go very far down that path.)</i> The last way kernels change is in structure. Experiment revealed that variations like inlining matrix dimensions could increase speed (or decrease it). So besides the auto-tuning over inner and outer blocking, there is an extra dimension for kernel variation. </li>
+ <li> <u>Specific kernel variants that generate OpenCL source</u> - Each major kernel variant has a concrete class with the GPU kernel implemented using the OpenCL metaprogramming abstractions above. These concrete classes are also responsible for management of the buffers and images used in benchmarking them. </li>
+ <li> <u>Benchmarking and auto-tuning loop</u> - The optimization is nested in two ways. Otherwise, the auto-tuning and empirical optimization would take several days instead of hours even on a fast GPU. The first way is a rank ordered selection of the fastest kernel variations after one or more probe trials over the full set of parameter combinations. These fastest variations are then benchmarked more extensively to find a winner. The second way is a very simple form of expectation maximization. The extra dimension for kernel variation is held constant (matrix dimensions and inner product loop order). This reduces the number of combinations by a factor of 12. The best values for inner and outer blocking are found. Then the extra dimension is optimized with the blocking parameters held constant. </li>
+ <li> <u>Applications to benchmark and print</u> - In my experience, benchmarking and tuning deserve some level of manual supervision. Automated tuning finds optimal solutions where it is told to look. It is too expensive for the system to look everywhere possible. This is why I feel it must be easy to specify optimization parameters, almost interactively, and explore. The easiest way to do this with minimal investment in development are command-line tools. </li>
+</ol>
+
+The three interesting parts are numbers 3, 4 and 5 above. Everything else is essentially boilerplate code.
+
+<a name="Conceptual_overview_of_the_auto-tuning_problem_for_matrix_multiply">
+<h3>Conceptual overview of the auto-tuning problem for matrix multiply</h3>
+</a>
+
+There are four major kernel variants, each with a corresponding C++ class.
+
+<p>
+
+<table rules="groups" cellpadding="4">
+ <colgroup span="1">
+ <colgroup span="2">
+ <thead>
+ <tr> <td>calculation with A and B as:</td>         <td>memory buffers</td>        <td>images</td> <tr>
+ <tbody>
+ <tr> <td>C = op(A) * op(B)</td>                    <td>KernelMatmulBuffer</td>    <td>KernelMatmulImage</td> <tr>
+ <tr> <td>C = alpha * op(A) * op(B) + beta * C</td> <td>KernelGenMatmulBuffer</td> <td>KernelGenMatmulImage</td> <tr>
+</table>
+
+<p>
+
+where A is M x K, B is K x N and C is M x N.
+
+<p>
+
+Each of these kernel variants accepts these inputs:
+
+<ol>
+ <li> is input matrix A transposed? </li>
+ <li> is input matrix B transposed? </li>
+ <li> M </li>
+ <li> N </li>
+ <li> K </li>
+ <li> work group size </li>
+ <li> inner blocking height </li>
+ <li> an extra parameter for structural variations in source code </li>
+</ol>
+
+and generates OpenCL kernel source that is then compiled and run on the GPU.
+
+<p>
+
+From the viewpoint of the auto-tuning optimization, these eight inputs are split into two groups. The first group determines the domain of the optimization space. The second group determines the range. For every specified point in the domain, the auto-tuning should find an optimal solution point in the range. Together, the two points comprise the eight inputs required to generate an OpenCL matrix multiply kernel. If the solution point is optimal, then that kernel specialization should have good performance as the cost function is empirical timings of performance on the GPU.
+
+<p>
+
+<table rules="groups" cellpadding="4">
+ <colgroup span="1">
+ <colgroup span="1">
+ <thead>
+ <tr>
+  <td>inputs in optimization domain</td>
+  <td>outputs in optimization range</td>
+ </tr>
+ <tr>
+  <td>for specific values of these five...</td>
+  <td>...find optimal values of these three</td>
+ </tr>
+ <tbody>
+ <tr>
+  <td>
+   <ol>
+    <li>is input matrix A transposed?</li>
+    <li>is input matrix B transposed?</li>
+    <li>M</li>
+    <li>N</li>
+    <li>K</li>
+   </ol>
+  </td>
+  <td>
+   <ol>
+    <li>work group size</li>
+    <li>inner blocking height</li>
+    <li>an extra parameter for structural variations in source code</li>
+   </ol>
+  </td>
+ </tr>
+</table>
+
+<p>
+
+Transposing A and B is specified at construction of the four C++ classes corresponding to the major kernel variants. This accounts for the first two optimization inputs. The other three inputs are passed to member function <u>KernelBaseMatmul::parameters(M, N, K)</u> which returns a collection. This collection accounts for the three optimization outputs. It contains all of the combinations to benchmark. Each combination is all eight values, the specified five inputs along with possible values for the remaining three output parameters.
+
+<p>
+
+To find an optimal combination, all we must do is run a benchmark test with each one and record the time. The combination resulting in the shortest time is the winner. This combination of parameters is selected as optimal. <i>As mentioned earlier, the optimization must exploit some inherent structure in the problem for practical efficiency. Brute force testing of kernel specializations over many trials (variance in timings can be large) is expensive.</i>
+
+<a name="Differences_between_the_four_major_matrix_multiply_variants">
+<h3>Differences between the four major matrix multiply variants</h3>
+</a>
+
+Two simple differences directly affect performance.
+
+<ol>
+ <li> <u>Images are 2x to 3x faster than memory buffers</u> - 
+On ATI hardware, images have a L1 cache. Memory buffers are not cached and must be programmatically staged from global to local memory. This results in much higher memory bandwidth for image based kernel implementations on ATI GPUs. So why bother with memory buffers? On non-ATI hardware (i.e. nVidia GPUs), performance results are likely to be very different. It could be that memory buffer based kernels are faster. There is nothing in the OpenCL specification mandating how memory buffers or images are implemented by devices.
+ </li>
+ <li> <u>General matrix multiply is slightly slower</u> -
+In general matrix multiply, the result is accumulated in the output matrix C. There is a read and then a write to this matrix. The additional read memory access reduces performance. For image based kernels, this also forces the output matrix C to be a memory buffer instead of an image. Images can be read-only or write-only and never read-write. My experience is that writes to images are about 3% faster than writes to memory buffers on ATI hardware (HD 5870).
+ </li>
+</ol>
+
+The more complex difference is between memory buffer and image based variants. The memory buffer kernels are significantly more complicated. The memory buffer kernels implement in effect an L1 cache using local memory. Outer blocks from matrices A and B are copied from global to local memory. After barrier synchronization, each thread then copies inner blocks from local memory to register variables and accumulates the inner product.
+
+<p>
+
+Image based kernels do not have to worry about most of this. Inner blocks are sampled directly from images (a texture) directly into register variables and then accumulate the inner product. The L1 cache is handled automatically by the hardware.
+
+<p>
+
+<b>Note:</b> <i>The underlying matrix data layout is <u>not</u> different between memory buffer and image based kernels. They layout is always row major (not transposed) and column major (transposed). Memory buffers and images are just different ways to access that data in memory.</i>
+
+<a name="Important_functions_for_matrix_multiply">
+<h3>Important functions for matrix multiply</h3>
+</a>
+
+There are two functions I consider to be at the heart of the design. It may be easier to understand the system if they are pointed out directly.
+
+<p>
+
+As described earlier, given eight values, an OpenCL kernel may be generated. What I didn't say earlier is that the eight values must be valid. The function <u>KernelBaseMatmul::validateParams</u> has the predicates determining valid from invalid points in the optimization space.
+
+<pre>
+// validate kernel parameters
+bool KernelBaseMatmul::validateParams(const size_t M,
+                                      const size_t N,
+                                      const size_t K,
+                                      const size_t groupSize,
+                                      const size_t blockHeight,
+                                      const size_t extraParam) const {
+
+    return
+
+        // work group size
+        groupSize >= 1 &&                       // allow small work groups (will be slow)
+        groupSize <= maxGroupSize(M, N, K) &&   // limit group size to avoid kernel hangs
+
+        // inner blocking height
+        blockHeight >= 1 &&                     // allow short inner blocks (will be slow)
+        blockHeight <= maxBlockHeight() &&      // limit block height to avoid kernel hangs and for speed
+
+        // all matrix dimensions must be a multiple of VECTOR_LENGTH
+        0 == M % VECTOR_LENGTH &&
+        0 == N % VECTOR_LENGTH &&
+        0 == K % VECTOR_LENGTH &&
+
+        // check for blocking compatible with matrix dimensions
+        0 == N % (groupSize * blockWidth()) &&
+        0 == M % (groupSize * blockHeight) &&
+        0 == K % (groupSize * VECTOR_LENGTH) &&
+        groupSize * blockWidth() <= N &&
+        groupSize * blockHeight <= M &&
+        groupSize * VECTOR_LENGTH <= K &&
+
+        // extra parameter
+        extraParam < numberExtraParam() &&
+        validExtraParam();
+}
+</pre>
+
+<p>
+
+Benchmark timings are eventually performed in a single function <u>Bench::run</u>. This is straightforward. Note that <u>gettimeofday</u> is used instead of any more accurate platform specific timer calls. I have not had troubles with the POSIX function call so opted for portability.
+
+<pre>
+// returns elapsed time in microseconds, 0 if error
+size_t Bench::run(const size_t numTrials, const vector<size_t>& args, const bool printDebug) {
+
+    // kernel parameter arguments
+    _kernel.setParams(args);
+
+    if (_printStatus && printDebug) cerr << _kernel << endl;
+
+    // kernels change depending on arguments
+    if (_printStatus) cerr << "rebuilding kernel...";
+    rebuildProgram();
+    if (_printStatus) cerr << " done\t";
+
+    // set kernel arguments
+    if (!_kernel.setArgs(_oclApp, _kernelHandle)) return 0; // fail
+
+    // work item dimensions
+    const vector<size_t> globalDims = _kernel.globalWorkItems();
+    const vector<size_t> localDims = _kernel.localWorkItems();
+
+    // start gettimeofday timer
+    struct timeval start_time;
+    if (-1 == gettimeofday(&start_time, 0)) {
+        if (_printStatus) cerr << "error: start gettimeofday" << endl;
+        return 0; // fail
+    }
+
+    // execute kernel for specified number of trials
+    int waitKernel;
+    for (size_t i = 0; i < numTrials; i++)
+    {
+        if (0 == i)
+            // first enqueued kernel
+            waitKernel = _oclApp.enqueueKernel(_kernelHandle, globalDims, localDims);
+        else
+            // subsequent enqueued kernels depend on previous one
+            waitKernel = _oclApp.enqueueKernel(_kernelHandle, globalDims, localDims, waitKernel);
+
+        if (-1 == waitKernel) {
+            if (_printStatus) cerr << "error: enqueue kernel " << i << endl;
+            if (0 != i && !_oclApp.wait()) // blocking call
+                if (_printStatus) cerr << "error: waiting for " << (i-1) << " enqueued kernels" << endl;
+            return 0; // fail
+        }
+    }
+
+    // wait for all kernels to finish
+    if (!_oclApp.wait(waitKernel)) { // blocking call
+        if (_printStatus) cerr << "error: waiting for all kernels" << endl;
+        return 0; // fail
+    }
+
+    // stop gettimeofday timer
+    struct timeval stop_time;
+    if (-1 == gettimeofday(&stop_time, 0)) {
+        if (_printStatus) cerr << "error: stop gettimeofday" << endl;
+        return 0; // fail
+    }
+
+    // calculate elapsed time in microseconds
+    const size_t elapsed_time
+        = 1000 * 1000 * ( stop_time.tv_sec - start_time.tv_sec )
+              + stop_time.tv_usec
+              + (1000 * 1000 - start_time.tv_usec)
+              - 1000 * 1000;
+
+    // allow kernel to check results, sometimes bad kernels do nothing
+    const bool isOk = _kernel.checkOutput(_oclApp, printDebug);
+
+    // final cleanup
+    if (!_oclApp.wait()) {
+        if (_printStatus) cerr << "error: clean up wait events" << endl;
+    }
+
+    return isOk ? elapsed_time : 0;
+}
+</pre>
+
+<a name="Examples_of_building_and_running">
+<h2>Examples of building and running</h2>
+</a>
+
+<a name="How_to_build">
+<h3>How to build</h3>
+</a>
+
+To build the binaries, first make sure the environment variable <i>ATISTREAMSDKROOT</i> is set. On my system, it is
+
+<table>
+ <tr>
+  <td> &nbsp;&nbsp;&nbsp;&nbsp; </td>
+  <td>
+<pre>
+[cjang@thinker gatlas]$ echo $ATISTREAMSDKROOT
+/opt/ati-stream-sdk-v2.0-lnx64/
+</pre>
+  </td>
+ </tr>
+</table>
+
+Then just run
+
+<table>
+ <tr>
+  <td> &nbsp;&nbsp;&nbsp;&nbsp; </td>
+  <td>
+<pre>
+make
+</pre>
+  </td>
+ </tr>
+</table>
+
+<a name="How_to_benchmark">
+<h3>How to benchmark</h3>
+</a>
+
+There are several benchmarking targets for characterizing the GPU device. For example, to benchmark the SGEMM image based kernel variant just run
+
+<table>
+ <tr>
+  <td> &nbsp;&nbsp;&nbsp;&nbsp; </td>
+  <td>
+<pre>
+make benchgemmimage
+</pre>
+  </td>
+ </tr>
+</table>
+
+or to benchmark the matrix multiply memory buffer based kernel variant do
+
+<table>
+ <tr>
+  <td> &nbsp;&nbsp;&nbsp;&nbsp; </td>
+  <td>
+<pre>
+make benchmmbuffer
+</pre>
+  </td>
+ </tr>
+</table>
+
+and simply run the following to benchmark everything (warning, this may take many hours)
+
+<table>
+ <tr>
+  <td> &nbsp;&nbsp;&nbsp;&nbsp; </td>
+  <td>
+<pre>
+make bench
+</pre>
+  </td>
+ </tr>
+</table>
+
+To easily visualize the benchmark results, just run
+
+<table>
+ <tr>
+  <td> &nbsp;&nbsp;&nbsp;&nbsp; </td>
+  <td>
+<pre>
+make chart
+</pre>
+  </td>
+ </tr>
+</table>
+
+which assembles a tabular summary of the benchmark data in two files: <i>chartgemm.tsv</i> and <i>chartmm.tsv</i>. These files have a tab separated value format so may be easily imported into a spreadsheet or plotting environment.
+
+<a name="How_to_use_the_benchmarking_command-line_applications">
+<h3>How to use the benchmarking command-line applications</h3>
+</a>
+
+There are four benchmarking tools: <i>bgemm_buffer</i>, <i>bgemm_image</i>, <i>bmm_buffer</i>, <i>bmm_image</i>. All share the same command line options. To see them, just use &quot;-h&quot;. Here are some examples.
+
+<p>
+
+<table>
+ <tr>
+  <td> <pre> ./bgemm_image -d gpu -n 3200 -t 10 </pre> </td>
+  <td> <i>SGEMM using images on the 1st GPU device for 3200x3200 with 10 trials</i> </td>
+ </tr>
+ <tr>
+  <td> <pre> ./bgemm_buffer -d gpu -n 1024 -t 5 -x 3 </pre> </td>
+  <td> <i>SGEMM using memory buffers on the 1st GPU device for 1024x1024 with 5 trials and keeping the 3 best</i> </td>
+ </tr>
+ <tr>
+  <td> <pre> ./bmm_image -d gpu1 -m 4800 -n 4000 -k 2048 -t 10 -x 10 -a -b </pre> </td>
+  <td> <i>matrix multiply using images on the 2nd GPU device for rectangular matrices with 10 trials and keeping the 10 best, matrices A and B are transposed</i> </td>
+ </tr>
+ <tr>
+  <td> <pre> ./bmm_buffer -d cpu -n 1600 -t 10 -b -e </pre> </td>
+  <td> <i>matrix multply using memory buffers on the 1st CPU device for 1600x1600 with 10 trials, matrix B is transposed, use faster nested optimization</i> </td>
+ </tr>
+</table>
+
+<p>
+
+Status messages are printed ss the auto-tuning proceeds. When the benchmark has finished, the final output looks something like the following.
+
+<i>( Output from: ./bgemm_image -d gpu -n 5120 -t 10 -x 3 -a -e )</i>
+<pre>
+[0] 2669300 usec        avg: 1005.84    stddev: 2.47614 5120 5120 5120 8 4 0    argsMNK jkl
+[1] 2671205 usec        avg: 1005.12    stddev: 1.67477 5120 5120 5120 8 4 10   inlineMNK klj
+[2] 2677526 usec        avg: 1002.76    stddev: 3.2374  5120 5120 5120 8 4 5    argsMNK lkj
+</pre>
+
+The best kernel ran for 2669300 microseconds over ten trials. The average GFLOPS rate was 1005.84. Note this is calculated as the average of the rates for each trial. This can be slightly different than the average over all trials taken together. The standard deviation is 2.47614. The matrix dimensions are M = 5120, N = 5120 and K = 5120. The best work group size is 8. The best inner blocking height is 4. The best extra parameter is 0 which corresponds to matrix dimensions passed as kernel arguments with an inner product accumulation loop order of jkl.
+
+<p>
+
+The options &quot;-p&quot; (paranoid check) and &quot;-z&quot; (print output) are not needed for benchmarking. They are for development. The paranoid check validates correctness of the kernel using random matrix data. Normally, benchmarks use a simple test input pattern of 1's as it simplifies validation of each benchmark trial. <i>Note that I believe the kernels are correct because they pass the paranoid check on a HD 5870 GPU. However, I have seen failures on a Core i7 CPU. In this case, I trust the GPU results more than the CPU output. - <u>An important lesson learned is not to assume numerical calculations are correct until verified as they may be dependent on the device, driver and SDK.</u></i>
+
+<a name="How_to_print_generated_kernel_source">
+<h3>How to print generated kernel source</h3>
+</a>
+
+There are four printing tools: <i>pgemm_buffer</i>, <i>pgemm_image</i>, <i>pmm_buffer</i>, <i>pmm_image</i>. All share the same command line options. To see them, just use &quot;-h&quot;. The eight parameters that determine a kernel must all be specified: is A transposed, is B transposed, M, N, K, group size, block height, extra parameter.
+
+<p>
+
+For example, let's say we wish to print the kernel corresponding to the best kernel in the example above. Then we would just run
+
+<table>
+ <tr>
+  <td> &nbsp;&nbsp;&nbsp;&nbsp; </td>
+  <td>
+<pre>
+./pgemm_image -n 5120 -a -g 8 -y 4 -x 0
+</pre>
+  </td>
+ </tr>
+</table>
+
+This prints to standard output an image based SGEMM kernel for 5120x5120 with matrix A transposed using a work group size of 8, an inner blocking height of 4 and an extra parameter of 0 (which has special meaning to the kernel code generation).
+
+<p>
+
+<i>Bellevue, WA, May 12 2010</i>
+
+</body>
+</html>

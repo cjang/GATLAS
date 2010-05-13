@@ -1,0 +1,149 @@
+#!/usr/bin/perl
+
+#    Copyright 2010 Chris Jang
+#
+#    This file is part of GATLAS.
+#
+#    GATLAS is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU Lesser General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    GATLAS is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU Lesser General Public License for more details.
+#
+#    You should have received a copy of the GNU Lesser General Public License
+#    along with GATLAS.  If not, see <http://www.gnu.org/licenses/>.
+
+use strict;
+use warnings;
+
+# graph
+my $vcnt = 0;
+my %vertex;      # ordinal -> label
+my %rvertex;     # label -> ordinal
+my %edge;        # ordinal -> ordinal -> label
+
+# color the vertices and edges
+my %vertexcolor; # ordinal -> color
+my %vertexshape; # ordinal -> shape
+my %edgecolor;   # ordinal -> ordinal -> color
+my %edgelabel;   # ordinal -> ordinal -> label type
+
+# subgraphs contain vertices
+my ($scnt, $sg) = (0, -1); # -1 means no subgraph
+my %subgraph;    # ordinal -> list of vertex ordinals
+my %nsubgraph;   # ordinal -> label
+my %rsubgraph;   # label -> ordinal
+
+# graph layout (optional)
+my ($size_width, $size_height) = (0, 0);
+my $horizontal_layout = 0;
+
+# parser dispatch table
+my %pdt = (
+
+  # add a vertex to the graph
+  "vertex" => sub { my (@token) = @_;
+    $vertex{$vcnt} = $token[0];
+    $rvertex{$token[0]} = $vcnt;
+    push @{$subgraph{$sg}}, $vcnt;
+    $vertexcolor{$vcnt} = $token[1] if defined $token[1];
+    $vertexshape{$vcnt} = $token[2] if defined $token[2];
+    $vcnt++; },
+
+  # add an edge to the graph
+  "edge" => sub { my (@token) = @_;
+    my $src = $rvertex{$token[0]};
+    my $dest = $rvertex{$token[1]};
+    my $label = (defined $token[2]) ? $token[2] : "";
+    $edge{$src."_".$dest} = $label;
+    $edgecolor{$src."_".$dest} = $token[3] if defined $token[3];
+    $edgelabel{$src."_".$dest} = $token[4] if defined $token[4]; },
+
+  # declare a subgraph
+  "subgraph" => sub { my (@token) = @_;
+    if ($token[0]) {
+      if (defined $rsubgraph{$token[0]}) {
+        $sg = $rsubgraph{$token[0]};
+      } else {
+        $sg = $rsubgraph{$token[0]} = $scnt;
+        $nsubgraph{$scnt} = $token[0];
+        $scnt++;
+      }
+    } else {
+      $sg = -1;
+    } },
+
+  # specify the graph size (optional)
+  "size" => sub { my (@token) = @_;
+    ($size_width, $size_height) = ($token[0], $token[1]); },
+
+  # specify left to right horizontal layout (default is top to bottom)
+  "horizontal_layout" => sub { my (@token) = @_;
+    $horizontal_layout = 1; },
+
+  # unrecognized
+  "_default_" => sub { my ($line) = @_;
+    return if $line =~ /^#/;
+    return if $line =~ /^\s*$/;
+    die "Bad line $line"; }
+);
+
+# parse input #################################################################
+
+while (<>) {
+  chomp $_;
+  my @token = split /\t/;
+  if (@token && exists $pdt{$token[0]}) {
+    my ($cmd, @tok) = @token;
+    $pdt{$cmd}->(@tok);
+    next;
+  }
+  $pdt{"_default_"}->($_);
+}
+
+# output ######################################################################
+
+print "digraph G{\n";
+print " rankdir=LR\n" if $horizontal_layout;
+print " size=\"$size_width,$size_height\"\n\n"
+  if $size_width > 0 and $size_height > 0;
+print " remincross=true\n";
+
+foreach my $subnum (map { -1 == $_ ? () : $_ } keys %subgraph) {
+  print " subgraph cluster_$subnum {\n";
+  print "  label=\"$nsubgraph{$subnum}\"\n";
+  print "  fontname=Helvetica\n";
+  print "  color=grey\n";
+  foreach my $vnum (@{$subgraph{$subnum}}) {
+    my $color = $vertexcolor{$vnum} ? $vertexcolor{$vnum} : "black";
+    my $shape = $vertexshape{$vnum} ? $vertexshape{$vnum} : "box";
+    print "  N$vnum [color=$color, label=\"$vertex{$vnum}\", fontname=Helvetica, shape=$shape]\n";
+  }
+  print " }\n\n";
+}
+
+foreach my $vnum (@{$subgraph{-1}}) {
+  my $color = $vertexcolor{$vnum} ? $vertexcolor{$vnum} : "black";
+  my $shape = $vertexshape{$vnum} ? $vertexshape{$vnum} : "box";
+  print " N$vnum [color=$color, label=\"$vertex{$vnum}\", fontname=Helvetica, shape=$shape]\n";
+}
+
+print "\n";
+
+foreach my $edge (keys %edge) {
+  $edge =~ /^(\d+)_(\d+)$/;
+  my $src = $1;
+  my $dest = $2;
+  my $key = $src."_".$dest;
+  my $label = $edge{$edge};
+  my $color = $edgecolor{$key} ? $edgecolor{$key} : "blue";
+  my $labeltype = $edgelabel{$key} ? $edgelabel{$key} : "label";
+  print "  N$src -> N$dest [color=$color, $labeltype=\"$label\"]\n";
+}
+
+print "}";
+
