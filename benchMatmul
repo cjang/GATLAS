@@ -25,6 +25,9 @@ case $# in
   6) OUTPUTDIR=$1 ; CALCTYPE=$2 ; MEMTYPE=$3 ; MATSIZE_START=$4 ; MATSIZE_STOP=$5 ; MATSIZE_STEP=$6 ;;
   *) echo usage: $0 output_directory mm\|gemm buffer\|image matrix_size_start matrix_size_stop matrix_size_step
      echo
+     echo "mm|gemm             - matrix multiply or general matrix multiply"
+     echo "buffer|image        - memory buffers or images"
+     echo
      echo "good values for:                    start, stop and step:"
      echo "    powers of 2 by wavefront size:  256    5632     64"
      echo "    even 100s:                      200    5600     100"
@@ -55,6 +58,20 @@ else
   exit 1
 fi
 
+case $CALCTYPE in
+  mm) ;;
+  gemm) ;;
+  *) echo error: invalid calculation type $CALCTYPE, must be mm or gemm
+     exit 1
+esac
+
+case $MEMTYPE in
+  buffer) ;;
+  image) ;;
+  *) echo error: invalid type $MEMTYPE, must be buffer or image
+     exit 1
+esac
+
 
 function bench_impl() {
   matrixsize=$1
@@ -64,7 +81,14 @@ function bench_impl() {
   if [ -f $OUTFILE ]; then
     echo -n skip
   else
-    ./${CALCTYPE}_$MEMTYPE -d $DEVICETYPE -n $matrixsize -t $NUMTRIALS -x $TOPN -e $extraflags > $OUTFILE 2>&1
+    ./b${CALCTYPE}_$MEMTYPE \
+      -d $DEVICETYPE \
+      -n $matrixsize \
+      -t $NUMTRIALS \
+      -x $TOPN \
+      -e \
+      $extraflags \
+      > $OUTFILE 2>&1
     echo -n .
   fi
 }
