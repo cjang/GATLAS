@@ -59,9 +59,10 @@ public:
     // inner product accumulation loop order, 3! permutations of (j,k,l)
     size_t _loopOrder(const size_t extraParam) const;
 
+    bool syncOutput(OCLApp& oclApp);
     bool checkOutput(OCLApp& oclApp, const bool printOutput);
 
-    bool setArgs(OCLApp& oclApp, const size_t kernelHandle);
+    bool setArgs(OCLApp& oclApp, const size_t kernelHandle, const bool syncInput);
 
     // prints the kernel source
     std::ostream& print(std::ostream& os) const;

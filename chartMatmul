@@ -43,11 +43,22 @@ sub readfile {
 
 sub printreport {
   my ($kerneltype, $description, $bestmap) = @_;
-  print join("\t", "kernel type", "description", "matrix size", "A B", "At B", "A Bt", "At Bt") . "\n";
+  print join("\t",
+             "kernel type", "description", "matrix size",
+             "A B", "At B", "A Bt", "At Bt",
+             "to A B", "to At B", "to A Bt", "to At Bt",
+             "from A B", "from At B", "from A Bt", "from At Bt",
+             "tofrom A B", "tofrom At B", "tofrom A Bt", "tofrom At Bt")
+        . "\n";
   foreach my $matrixsize (sort {$a <=> $b} keys %{$matrixsize{$kerneltype}}) {
     print join("\t", $kerneltype, $description, $matrixsize);
-    foreach my $transAB ("", "_a", "_b", "_a_b") {
-      print "\t" . $bestmap->{$kerneltype}{$transAB}{$matrixsize};
+    foreach my $busXfer ("", "_to", "_from", "_tofrom") {
+      foreach my $transAB ("", "_a", "_b", "_a_b") {
+        my $value = defined $bestmap->{$kerneltype}{$busXfer . $transAB}
+                        ? $bestmap->{$kerneltype}{$busXfer . $transAB}{$matrixsize}
+                        : "";
+        print "\t" . $value;
+      }
     }
     print "\n";
   }
@@ -67,7 +78,7 @@ my $CALCTYPE=$ARGV[1];
 find(
   sub {
     if (/b$CALCTYPE\_(buffer|image)([^\.]*)\.(\d+)$/) {
-      my ($kerneltype, $transAB, $matrixsize) = ($1, $2, $3);
+      my ($kerneltype, $extraflags, $matrixsize) = ($1, $2, $3);
       $matrixsize{$kerneltype}{$matrixsize}++;
       my ($gflops, $groupsize, $blockheight, $extraparam);
       readfile( $_,
@@ -80,10 +91,10 @@ find(
       $groupsize = "" if not defined $groupsize;
       $blockheight = "" if not defined $blockheight;
       $extraparam = "" if not defined $extraparam;
-      $bestgflops{$kerneltype}{$transAB}{$matrixsize} = $gflops;
-      $bestgroupsize{$kerneltype}{$transAB}{$matrixsize} = $groupsize;
-      $bestblockheight{$kerneltype}{$transAB}{$matrixsize} = $blockheight;
-      $bestextraparam{$kerneltype}{$transAB}{$matrixsize} = $extraparam;
+      $bestgflops{$kerneltype}{$extraflags}{$matrixsize} = $gflops;
+      $bestgroupsize{$kerneltype}{$extraflags}{$matrixsize} = $groupsize;
+      $bestblockheight{$kerneltype}{$extraflags}{$matrixsize} = $blockheight;
+      $bestextraparam{$kerneltype}{$extraflags}{$matrixsize} = $extraparam;
     }
   },
   $OUTPUTDIR);

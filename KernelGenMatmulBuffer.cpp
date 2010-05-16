@@ -17,6 +17,8 @@
 
 #include "KernelGenMatmulBuffer.hpp"
 
+using namespace std;
+
 #include "declare_namespace"
 
 // matrix dimensions are inlined constants or passed as kernel arguments
@@ -31,7 +33,7 @@ size_t KernelGenMatmulBuffer::numberExtraParam() const {
          * 6;  // inner product loop order
 }
 
-std::string KernelGenMatmulBuffer::namePrefix() const { return "KernelGenMatmulBuffer"; }
+string KernelGenMatmulBuffer::namePrefix() const { return "KernelGenMatmulBuffer"; }
 
 KernelGenMatmulBuffer::KernelGenMatmulBuffer(const bool transposeA,
                                              const bool transposeB)
@@ -53,8 +55,8 @@ void KernelGenMatmulBuffer::paranoidCheck() {
     _paranoidC = new scalar[dimM() * dimN()];
 }
 
-std::string KernelGenMatmulBuffer::desc() const {
-    std::stringstream ss;
+string KernelGenMatmulBuffer::desc() const {
+    stringstream ss;
     ss << (inlineMNK() ? "inlineMNK" : "argsMNK")
        << " ";
     switch (loopOrder()) {
@@ -83,6 +85,10 @@ size_t KernelGenMatmulBuffer::maxBlockHeight() const {
                : 2 * VECTOR_LENGTH + VECTOR_LENGTH / 2; // risk of kernel hangs if larger
 }
 
+bool KernelGenMatmulBuffer::syncOutput(OCLApp& oclApp) {
+    return syncBufferFromDevice(oclApp, _handleC);
+}
+
 bool KernelGenMatmulBuffer::checkOutput(OCLApp& oclApp, const bool printOutput) {
     if (_paranoidCheck) {
         return checkBuffer(oclApp, _handleC, dimN(), dimM(), _paranoidC, printOutput);
@@ -92,7 +98,7 @@ bool KernelGenMatmulBuffer::checkOutput(OCLApp& oclApp, const bool printOutput) 
     }
 }
 
-bool KernelGenMatmulBuffer::setArgs(OCLApp& oclApp, const size_t kernelHandle) {
+bool KernelGenMatmulBuffer::setArgs(OCLApp& oclApp, const size_t kernelHandle, const bool syncInput) {
     if (-1 == _handleA || -1 == _handleB || -1 == _handleC || mnkChanged()) {
         oclApp.releaseBuffers();
         _handleA = createBufferR<scalar, VECTOR_LENGTH>(oclApp, dimM() * dimK(), "matA", 1);
@@ -100,6 +106,12 @@ bool KernelGenMatmulBuffer::setArgs(OCLApp& oclApp, const size_t kernelHandle) {
         _handleC = createBufferRW<scalar, VECTOR_LENGTH>(oclApp, dimM() * dimN(), "matC", 0);
         if (-1 == _handleA || -1 == _handleB || -1 == _handleC) return false; // failure
     } else {
+        // matrices A and B
+        if (syncInput) {
+            if (!syncBufferToDevice(oclApp, _handleA)) return false;
+            if (!syncBufferToDevice(oclApp, _handleB)) return false;
+        }
+        // matrix C
         if (!clearBuffer(oclApp, _handleC)) return false;
     }
 
@@ -135,7 +147,7 @@ bool KernelGenMatmulBuffer::setArgs(OCLApp& oclApp, const size_t kernelHandle) {
             for (size_t i = 0; i < dimM() * dimN(); i++)
                 _paranoidC[i] = alpha * _paranoidC[i] + beta * ptrC[i];
         } else {
-            std::cerr << "error: failed to fill matrices with random values" << std::endl;
+            cerr << "error: failed to fill matrices with random values" << endl;
         }
     }
 
@@ -161,7 +173,7 @@ bool KernelGenMatmulBuffer::setArgs(OCLApp& oclApp, const size_t kernelHandle) {
 }
 
 // prints the kernel source
-std::ostream& KernelGenMatmulBuffer::print(std::ostream& os) const {
+ostream& KernelGenMatmulBuffer::print(ostream& os) const {
 
     // kernel function attributes
     AutoVectorize< scalarN > attrAutoVec;
@@ -357,7 +369,7 @@ std::ostream& KernelGenMatmulBuffer::print(std::ostream& os) const {
 
     os << EndBlock();
 
-    const ConstantValue<std::string> outC
+    const ConstantValue<string> outC
         = inlineMNK()
               ? matC + multQuads(dimN()) * globalRow + globalCol
               : matC + multQuads(N) * globalRow + globalCol;

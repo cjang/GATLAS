@@ -25,6 +25,10 @@ int createImageR(OCLApp& oclApp, const size_t width, const size_t height,
                  const std::string& argName,
                  const float value, const bool pinned) {
     float *ptr = alloc_memalign<float, 4>(width * height);
+    if (NULL == ptr) {
+        std::cerr << "error: OCL create image for " << argName << std::endl;
+        return -1;
+    }
     fillconst<float>(ptr, value, width * height);
     const int imgHandle = oclApp.createImage(width/4, height, OCLApp::READ, ptr, pinned);
     if (-1 == imgHandle) {
@@ -39,6 +43,10 @@ int createImageW(OCLApp& oclApp, const size_t width, const size_t height,
                  const std::string& argName,
                  const float value, const bool pinned) {
     float *ptr = alloc_memalign<float, 4>(width * height);
+    if (NULL == ptr) {
+        std::cerr << "error: OCL create image for " << argName << std::endl;
+        return -1;
+    }
     fillconst<float>(ptr, value, width * height);
     const int imgHandle = oclApp.createImage(width/4, height, OCLApp::WRITE, ptr, pinned);
     if (-1 == imgHandle) {
@@ -53,6 +61,10 @@ int createImageRW(OCLApp& oclApp, const size_t width, const size_t height,
                   const std::string& argName,
                   const float value, const bool pinned) {
     float *ptr = alloc_memalign<float, 4>(width * height);
+    if (NULL == ptr) {
+        std::cerr << "error: OCL create image for " << argName << std::endl;
+        return -1;
+    }
     fillconst<float>(ptr, value, width * height);
     const int imgHandle = oclApp.createImage(width/4, height, OCLApp::READWRITE, ptr, pinned);
     if (-1 == imgHandle) {

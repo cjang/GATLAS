@@ -152,6 +152,11 @@ protected:
                        const size_t imageIndex,
                        const size_t length);
 
+    bool syncBufferToDevice(OCLApp& oclApp, const size_t bufferIndex);
+    bool syncBufferFromDevice(OCLApp& oclApp, const size_t bufferIndex);
+    bool syncImageToDevice(OCLApp& oclApp, const size_t imageIndex);
+    bool syncImageFromDevice(OCLApp& oclApp, const size_t imageIndex);
+
     bool checkBuffer(OCLApp& oclApp,
                      const size_t bufferIndex,
                      const size_t width,

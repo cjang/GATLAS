@@ -22,11 +22,13 @@ NUMTRIALS=10
 TOPN=3
 
 case $# in
-  6) OUTPUTDIR=$1 ; CALCTYPE=$2 ; MEMTYPE=$3 ; MATSIZE_START=$4 ; MATSIZE_STOP=$5 ; MATSIZE_STEP=$6 ;;
-  *) echo usage: $0 output_directory mm\|gemm buffer\|image matrix_size_start matrix_size_stop matrix_size_step
+  6) OUTPUTDIR=$1 ; CALCTYPE=$2 ; MEMTYPE=$3 ; BUSXFER="none" ; MATSIZE_START=$4 ; MATSIZE_STOP=$5 ; MATSIZE_STEP=$6 ;;
+  7) OUTPUTDIR=$1 ; CALCTYPE=$2 ; MEMTYPE=$3 ; BUSXFER=$4 ; MATSIZE_START=$5 ; MATSIZE_STOP=$6 ; MATSIZE_STEP=$7 ;;
+  *) echo usage: $0 output_directory mm\|gemm buffer\|image \[none\|to\|from\|tofrom\] matrix_size_start matrix_size_stop matrix_size_step
      echo
      echo "mm|gemm             - matrix multiply or general matrix multiply"
      echo "buffer|image        - memory buffers or images"
+     echo "none|to|from|tofrom - PCIe bus data transfer between host and device (default is none)"
      echo
      echo "good values for:                    start, stop and step:"
      echo "    powers of 2 by wavefront size:  256    5632     64"
@@ -72,12 +74,21 @@ case $MEMTYPE in
      exit 1
 esac
 
+case $BUSXFER in
+  none) BUSXFEROPT="" ; BUSXFERSUFFIX="" ;;
+  to) BUSXFEROPT="-s" ; BUSXFERSUFFIX="_to" ;;
+  from) BUSXFEROPT="-r" ; BUSXFERSUFFIX="_from" ;;
+  tofrom) BUSXFEROPT="-s -r" ; BUSXFERSUFFIX="_tofrom" ;;
+  *) echo error: invalid bus transfer option $BUSXFER, must be one of: none, to, from, tofrom
+     exit 1
+esac
+
 
 function bench_impl() {
   matrixsize=$1
   extraflags=$2
   filesuffix=$3
-  OUTFILE=$OUTPUTDIR/b${CALCTYPE}_${MEMTYPE}$filesuffix.$matrixsize
+  OUTFILE=$OUTPUTDIR/b${CALCTYPE}_${MEMTYPE}${BUSXFERSUFFIX}$filesuffix.$matrixsize
   if [ -f $OUTFILE ]; then
     echo -n skip
   else
@@ -88,6 +99,7 @@ function bench_impl() {
       -x $TOPN \
       -e \
       $extraflags \
+      $BUSXFEROPT \
       > $OUTFILE 2>&1
     echo -n .
   fi

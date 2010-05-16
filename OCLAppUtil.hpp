@@ -72,6 +72,10 @@ int createBufferR(OCLApp& oclApp, const size_t bufSize,
                   const std::string& argName,
                   const SCALAR_TYPE value = 0, const bool pinned = false) {
     SCALAR_TYPE *ptr = alloc_memalign<SCALAR_TYPE, VECTOR_LENGTH>(bufSize);
+    if (NULL == ptr) {
+        std::cerr << "error: OCL create buffer for " << argName << std::endl;
+        return -1;
+    }
     fillconst<SCALAR_TYPE>(ptr, value, bufSize);
     const int bufHandle = oclApp.createBuffer<SCALAR_TYPE>(bufSize, OCLApp::READ, ptr, pinned);
     if (-1 == bufHandle) {
@@ -87,6 +91,10 @@ int createBufferW(OCLApp& oclApp, const size_t bufSize,
                   const std::string& argName,
                   const SCALAR_TYPE value = 0, const bool pinned = false) {
     SCALAR_TYPE *ptr = alloc_memalign<SCALAR_TYPE, 1>(bufSize);
+    if (NULL == ptr) {
+        std::cerr << "error: OCL create buffer for " << argName << std::endl;
+        return -1;
+    }
     fillconst<SCALAR_TYPE>(ptr, value, bufSize);
     const int bufHandle = oclApp.createBuffer<SCALAR_TYPE>(bufSize, OCLApp::WRITE, ptr, pinned);
     if (-1 == bufHandle) {
@@ -102,6 +110,10 @@ int createBufferRW(OCLApp& oclApp, const size_t bufSize,
                    const std::string& argName,
                    const SCALAR_TYPE value = 0, const bool pinned = false) {
     SCALAR_TYPE *ptr = alloc_memalign<SCALAR_TYPE, VECTOR_LENGTH>(bufSize);
+    if (NULL == ptr) {
+        std::cerr << "error: OCL create buffer for " << argName << std::endl;
+        return -1;
+    }
     fillconst<SCALAR_TYPE>(ptr, value, bufSize);
     const int bufHandle = oclApp.createBuffer<SCALAR_TYPE>(bufSize, OCLApp::READWRITE, ptr, pinned);
     if (-1 == bufHandle) {

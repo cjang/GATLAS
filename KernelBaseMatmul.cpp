@@ -210,18 +210,52 @@ bool KernelBaseMatmul::fillrandImage(OCLApp& oclApp,
     return true;
 }
 
-bool KernelBaseMatmul::checkBuffer(OCLApp& oclApp,
-                                   const size_t bufferIndex,
-                                   const size_t width,
-                                   const size_t height,
-                                   const scalar testValue,
-                                   const bool   printOutput) {
+bool KernelBaseMatmul::syncBufferToDevice(OCLApp& oclApp, const size_t bufferIndex) {
+    // retrieve output
+    const int syncBuf = oclApp.enqueueWriteBuffer(bufferIndex);
+    if (-1 == syncBuf || !oclApp.wait(syncBuf)) {
+        std::cerr << "error: send input buffer " << bufferIndex << std::endl;
+        return false;
+    }
+    return true;
+}
+
+bool KernelBaseMatmul::syncBufferFromDevice(OCLApp& oclApp, const size_t bufferIndex) {
     // retrieve output
     const int syncBuf = oclApp.enqueueReadBuffer(bufferIndex);
     if (-1 == syncBuf || !oclApp.wait(syncBuf)) {
         std::cerr << "error: retrieve output buffer " << bufferIndex << std::endl;
         return false;
     }
+    return true;
+}
+
+bool KernelBaseMatmul::syncImageToDevice(OCLApp& oclApp, const size_t imageIndex) {
+    // retrieve output
+    const int syncImg = oclApp.enqueueWriteImage(imageIndex);
+    if (-1 == syncImg || !oclApp.wait(syncImg)) {
+        std::cerr << "error: send input image " << imageIndex << std::endl;
+        return false;
+    }
+    return true;
+}
+
+bool KernelBaseMatmul::syncImageFromDevice(OCLApp& oclApp, const size_t imageIndex) {
+    // retrieve output
+    const int syncImg = oclApp.enqueueReadImage(imageIndex);
+    if (-1 == syncImg || !oclApp.wait(syncImg)) {
+        std::cerr << "error: retrieve output image " << imageIndex << std::endl;
+        return false;
+    }
+    return true;
+}
+
+bool KernelBaseMatmul::checkBuffer(OCLApp& oclApp,
+                                   const size_t bufferIndex,
+                                   const size_t width,
+                                   const size_t height,
+                                   const scalar testValue,
+                                   const bool   printOutput) {
     const scalar *ptr = oclApp.bufferPtr<scalar>(bufferIndex);
 
     // quick and primitive test here
@@ -240,12 +274,6 @@ bool KernelBaseMatmul::checkImage(OCLApp& oclApp,
                                   const size_t height,
                                   const float  testValue,
                                   const bool   printOutput) {
-    // retrieve output
-    const int syncImg = oclApp.enqueueReadImage(imageIndex);
-    if (-1 == syncImg || !oclApp.wait(syncImg)) {
-        std::cerr << "error: retrieve output image " << imageIndex << std::endl;
-        return false;
-    }
     const float *ptr = oclApp.imagePtr(imageIndex);
 
     // quick and primitive test here
@@ -264,11 +292,6 @@ bool KernelBaseMatmul::checkBuffer(OCLApp&       oclApp,
                                    const size_t  height,
                                    const scalar *testBuffer,
                                    const bool    printOutput) {
-    const int syncBuf = oclApp.enqueueReadBuffer(bufferIndex);
-    if (-1 == syncBuf || !oclApp.wait(syncBuf)) {
-        std::cerr << "error: retrieve output buffer " << bufferIndex << std::endl;
-        return false;
-    }
     const scalar *ptr = oclApp.bufferPtr<scalar>(bufferIndex);
     const double diff = absdiff(ptr, testBuffer, width * height);
     std::cerr << "absdiff: " << diff << "\t";
@@ -282,11 +305,6 @@ bool KernelBaseMatmul::checkImage(OCLApp&       oclApp,
                                   const size_t  height,
                                   const scalar *testImage,
                                   const bool    printOutput) {
-    const int syncImg = oclApp.enqueueReadImage(imageIndex);
-    if (-1 == syncImg || !oclApp.wait(syncImg)) {
-        std::cerr << "error: retrieve output image " << imageIndex << std::endl;
-        return false;
-    }
     const scalar *ptr = oclApp.imagePtr(imageIndex);
     const double diff = absdiff(ptr, testImage, width * height);
     std::cerr << "absdiff: " << diff << "\t";

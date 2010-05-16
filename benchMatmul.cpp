@@ -63,34 +63,40 @@ bool parseOpts(int argc, char *argv[],
                int& K,
                int& groupSize,
                int& blockHeight,
+               int& extraParam,
                size_t& numberTrials,
                int& topN,
                bool& nestedOptimization,
                bool& transposeA,
                bool& transposeB,
+               bool& busTransferToDevice,
+               bool& busTransferFromDevice,
                bool& paranoidCheck,
                bool& printDebug) {
     int opt;
-    while ((opt = getopt(argc, argv, "heabpzd:m:n:k:g:y:t:x:")) != -1) {
+    while ((opt = getopt(argc, argv, "heabsrpzd:m:n:k:g:y:w:t:x:")) != -1) {
         switch (opt) {
             case ('h') :
                 cerr << "usage: " << argv[0]
                      << " -d cpu|gpu|cpuX|gpuX -n N [-m M -k K]"
-                        " [-g groupSize [-y blockHeight]]"
+                        " [-g groupSize [-y blockHeight [-w extraParam]]]"
                         " [-t numberTrials]"
                         " [-x topN]"
-                        " [-e] [-a] [-b] [-p] [-z] [-h]" << endl
+                        " [-e] [-a] [-b] [-s] [-r] [-p] [-z] [-h]" << endl
                      << "\t-d cpu or gpu device, optional X is the device number" << endl
                      << "\t-m matrix dimension M" << endl
                      << "\t-n matrix dimension N" << endl
                      << "\t-k matrix dimension K" << endl
                      << "\t-g work item group width and height" << endl
                      << "\t-y inner blocking height" << endl
+                     << "\t-w extra parameter" << endl
                      << "\t-t number of trials (default is 1)" << endl
                      << "\t-x keep topN (groupSize, blockHeight) combinations" << endl
                      << "\t-e use faster nested optimization (default no)" << endl
                      << "\t-a transpose A (default no)" << endl
                      << "\t-b transpose B (default no)" << endl
+                     << "\t-s include PCIe bus data transfer to device in timing (default no)" << endl
+                     << "\t-r include PCIe bus data transfer from device in timing (default no)" << endl
                      << "\t-p paranoid output matrix check (default no)" << endl
                      << "\t-z print matrix output (default no)" << endl
                      << "\t-h help" << endl;
@@ -100,12 +106,15 @@ bool parseOpts(int argc, char *argv[],
             case ('n') : N = atoi(optarg); break;
             case ('k') : K = atoi(optarg); break;
             case ('g') : groupSize = atoi(optarg); break;
-            case ('y') : blockHeight = atoi(optarg); break;
+	    case ('y') : blockHeight = atoi(optarg); break;
+            case ('w') : extraParam = atoi(optarg); break;
             case ('t') : numberTrials = atoi(optarg); break;
             case ('x') : topN = atoi(optarg); break;
             case ('e') : nestedOptimization = true; break;
             case ('a') : transposeA = true; break;
             case ('b') : transposeB = true; break;
+            case ('s') : busTransferToDevice = true; break;
+            case ('r') : busTransferFromDevice = true; break;
             case ('p') : paranoidCheck = true; break;
             case ('z') : printDebug = true; break;
         }
@@ -147,6 +156,10 @@ bool parseOpts(int argc, char *argv[],
         cerr << "error: group size must be specified with block height" << endl;
         rc = false;
     }
+    if (-1 == groupSize && -1 == blockHeight && -1 != extraParam) {
+        cerr << "error: group size and block height must be specified with extra parameter" << endl;
+        rc = false;
+    }
     if (-1 != groupSize && (groupSize < 1 || groupSize > 16)) {
         cerr << "error: work item group size must be a number from 1 to 16 inclusive" << endl;
         rc = false;
@@ -161,7 +174,7 @@ bool parseOpts(int argc, char *argv[],
     }
 
     // doesn't really make sense to specify blocking with nested optimization
-    if (nestedOptimization && (-1 != groupSize || -1 != blockHeight)) {
+    if (nestedOptimization && (-1 != groupSize || -1 != blockHeight || -1 != extraParam)) {
         cerr << "error: nested optimization will find optimal blocking" << endl;
         rc = false;
     }
@@ -178,13 +191,22 @@ ostream& printParams(ostream& os, const vector<size_t>& args) {
 
 vector< vector<size_t> > getParams(const KernelBaseMatmul& kernel,
                                    const size_t M, const size_t N, const size_t K,
-                                   const size_t groupSize, const size_t blockHeight,
+                                   const size_t groupSize, const size_t blockHeight, const size_t extraParam,
                                    const int loopOrder)
 {
     vector< vector<size_t> > pargs;
 
     // all parameters
-    if (-1 != groupSize && -1 != blockHeight)
+    if (-1 != groupSize && -1 != blockHeight && -1 != extraParam) {
+        vector<size_t> a;
+        a.push_back(M);
+        a.push_back(N);
+        a.push_back(K);
+        a.push_back(groupSize);
+        a.push_back(blockHeight);
+        a.push_back(extraParam);
+        pargs.push_back(a);
+    } else if (-1 != groupSize && -1 != blockHeight)
         pargs = kernel.parameters(M, N, K, groupSize, blockHeight);
     else if (-1 != groupSize)
         pargs = kernel.parameters(M, N, K, groupSize);
@@ -214,6 +236,8 @@ void mainLoop(KernelBaseMatmul& kernel,
               vector<double>& pargsAverage,
               const size_t numberTrials,
               const size_t topN,
+              const bool busTransferToDevice,
+              const bool busTransferFromDevice,
               const bool printDebug,
               const bool paranoidCheck) {
     vector<size_t> pargsTime;
@@ -242,7 +266,7 @@ void mainLoop(KernelBaseMatmul& kernel,
 
                 // dummy run to create buffers/images and flush to device
                 if (initRun) {
-                    bench.run(1, args, printDebug);
+                    bench.run(1, args, busTransferToDevice, busTransferFromDevice, printDebug);
                     initRun = false;
                     cout << endl << endl;
 
@@ -253,7 +277,7 @@ void mainLoop(KernelBaseMatmul& kernel,
 
                 cout << "[trial " << k << "] ";
 
-                const size_t microsecs = bench.run(1, args, printDebug);
+                const size_t microsecs = bench.run(1, args, busTransferToDevice, busTransferFromDevice, printDebug);
                 if (0 == microsecs) {
                     pargsOk[i] = false;
                     continue;
@@ -349,6 +373,8 @@ void mainLoop(KernelBaseMatmul& kernel,
               const vector< vector<size_t> >& pargs,
               const size_t numberTrials,
               const size_t topN,
+              const bool busTransferToDevice,
+              const bool busTransferFromDevice,
               const bool printDebug,
               const bool paranoidCheck) {
     vector<bool> pargsOk;
@@ -357,29 +383,41 @@ void mainLoop(KernelBaseMatmul& kernel,
         pargsOk.push_back(true);
         pargsAverage.push_back(0);
     }
-    mainLoop(kernel, bench, pargs, pargsOk, pargsAverage, numberTrials, topN, printDebug, paranoidCheck);
+    mainLoop(kernel,
+             bench,
+             pargs,
+             pargsOk,
+             pargsAverage,
+             numberTrials,
+             topN,
+             busTransferToDevice,
+             busTransferFromDevice,
+             printDebug,
+             paranoidCheck);
 }
 
 int main(int argc, char *argv[])
 {
     string device = "<unspecified>";
     int M = -1, N = -1, K = -1;
-    int groupSize = -1, blockHeight = -1;
+    int groupSize = -1, blockHeight = -1, extraParam = -1;
     size_t numberTrials = 1;
     int topN = -1;
     bool nestedOptimization = false;
     bool transposeA = false, transposeB = false;
+    bool busTransferToDevice = false, busTransferFromDevice = false;
     bool paranoidCheck = false;
     bool printDebug = false;
 
     if (!parseOpts(argc, argv,
                    device,
                    M, N, K,
-                   groupSize, blockHeight,
+                   groupSize, blockHeight, extraParam,
                    numberTrials,
                    topN,
                    nestedOptimization,
                    transposeA, transposeB,
+                   busTransferToDevice, busTransferFromDevice,
                    paranoidCheck,
                    printDebug))
         exit(1);
@@ -391,7 +429,10 @@ int main(int argc, char *argv[])
     KERNEL_CLASS kernel(transposeA, transposeB);
     Bench bench(oclApp, kernel);
 
-    vector< vector<size_t> > pargs = getParams(kernel, M, N, K, groupSize, blockHeight, (nestedOptimization ? 0 : -1));
+    vector< vector<size_t> > pargs = getParams(kernel,
+                                               M, N, K,
+                                               groupSize, blockHeight, extraParam,
+                                               (nestedOptimization ? 0 : -1));
 
     vector<bool> pargsOk;
     vector<double> pargsAverage;
@@ -400,7 +441,17 @@ int main(int argc, char *argv[])
         pargsAverage.push_back(0);
     }
 
-    mainLoop(kernel, bench, pargs, pargsOk, pargsAverage, numberTrials, topN, printDebug, paranoidCheck);
+    mainLoop(kernel,
+             bench,
+             pargs,
+             pargsOk,
+             pargsAverage,
+             numberTrials,
+             topN,
+             busTransferToDevice,
+             busTransferFromDevice,
+             printDebug,
+             paranoidCheck);
 
     if (! nestedOptimization) return 0; // one full pass only
 
@@ -426,9 +477,20 @@ int main(int argc, char *argv[])
         break;
     }
 
-    pargs = getParams(kernel, M, N, K, bestGroupSize, bestBlockHeight, -1);
+    pargs = getParams(kernel,
+                      M, N, K,
+                      bestGroupSize, bestBlockHeight, extraParam,
+                      -1);
 
-    mainLoop(kernel, bench, pargs, numberTrials, topN, printDebug, paranoidCheck);
+    mainLoop(kernel,
+             bench,
+             pargs,
+             numberTrials,
+             topN,
+             busTransferToDevice,
+             busTransferFromDevice,
+             printDebug,
+             paranoidCheck);
 
     return 0;
 }

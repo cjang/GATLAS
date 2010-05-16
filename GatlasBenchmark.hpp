@@ -47,9 +47,10 @@ struct KernelInterface
     virtual bool setParams(const std::vector<size_t>& args) = 0;
 
     // allocate buffers and set kernel matrix arguments
-    virtual bool setArgs(OCLApp& oclApp, const size_t kernelHandle) = 0;
+    virtual bool setArgs(OCLApp& oclApp, const size_t kernelHandle, const bool syncInput) = 0;
 
     // check output, sometimes bad kernels do nothing
+    virtual bool syncOutput(OCLApp& oclApp) = 0;
     virtual bool checkOutput(OCLApp& oclApp, const bool printOutput = false) = 0;
 
     // work items
@@ -78,7 +79,11 @@ public:
     Bench(OCLApp& oclApp, KernelInterface& kernel, const bool printStatus = true);
 
     // returns elapsed time in microseconds, 0 if error
-    size_t run(const size_t numTrials, const std::vector<size_t>& args, const bool printDebug = false);
+    size_t run(const size_t numTrials,
+               const std::vector<size_t>& args,
+               const bool busTransferToDevice,
+               const bool busTransferFromDevice,
+               const bool printDebug = false);
 };
 
 }; // namespace

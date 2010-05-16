@@ -17,6 +17,8 @@
 
 #include "KernelMatmulImage.hpp"
 
+using namespace std;
+
 #include "declare_namespace"
 
 // matrix dimensions are inlined constants or passed as kernel arguments
@@ -34,7 +36,7 @@ size_t KernelMatmulImage::numberExtraParam() const {
          * 6;  // inner product loop order
 }
 
-std::string KernelMatmulImage::namePrefix() const { return "KernelMatmulImage"; }
+string KernelMatmulImage::namePrefix() const { return "KernelMatmulImage"; }
 
 KernelMatmulImage::KernelMatmulImage(const bool transposeA,
                                      const bool transposeB)
@@ -56,8 +58,8 @@ void KernelMatmulImage::paranoidCheck() {
     _paranoidC = new scalar[dimM() * dimN()];
 }
 
-std::string KernelMatmulImage::desc() const {
-    std::stringstream ss;
+string KernelMatmulImage::desc() const {
+    stringstream ss;
     ss << (inlineMNK() ? "inlineMNK" : "argsMNK")
        << " ";
     switch (loopOrder()) {
@@ -83,6 +85,10 @@ size_t KernelMatmulImage::maxBlockHeight() const {
                : 3 * VECTOR_LENGTH;
 }
 
+bool KernelMatmulImage::syncOutput(OCLApp& oclApp) {
+    return syncImageFromDevice(oclApp, _handleC);
+}
+
 bool KernelMatmulImage::checkOutput(OCLApp& oclApp, const bool printOutput) {
     if (_paranoidCheck) {
         return checkImage(oclApp, _handleC, dimN(), dimM(), _paranoidC, printOutput);
@@ -92,7 +98,7 @@ bool KernelMatmulImage::checkOutput(OCLApp& oclApp, const bool printOutput) {
     }
 }
 
-bool KernelMatmulImage::setArgs(OCLApp& oclApp, const size_t kernelHandle) {
+bool KernelMatmulImage::setArgs(OCLApp& oclApp, const size_t kernelHandle, const bool syncInput) {
 
     if (-1 == _handleA || -1 == _handleB || -1 == _handleC || mnkChanged()) {
         oclApp.releaseImages();
@@ -112,6 +118,12 @@ bool KernelMatmulImage::setArgs(OCLApp& oclApp, const size_t kernelHandle) {
         if (-1 == _handleA || -1 == _handleB || -1 == _handleC) return false; // failure
 
     } else {
+        // matrices A and B
+        if (syncInput) {
+            if (!syncImageToDevice(oclApp, _handleA)) return false;
+            if (!syncImageToDevice(oclApp, _handleB)) return false;
+        }
+        // matrix C
         if (!clearImage(oclApp, _handleC)) return false;
     }
 
@@ -155,7 +167,7 @@ bool KernelMatmulImage::setArgs(OCLApp& oclApp, const size_t kernelHandle) {
 }
 
 // prints the kernel source
-std::ostream& KernelMatmulImage::print(std::ostream& os) const {
+ostream& KernelMatmulImage::print(ostream& os) const {
 
     // kernel function attributes
     AutoVectorize< scalarN > attrAutoVec;

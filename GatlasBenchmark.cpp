@@ -47,7 +47,11 @@ Bench::Bench(OCLApp& oclApp, KernelInterface& kernel, const bool printStatus)
     { }
 
 // returns elapsed time in microseconds, 0 if error
-size_t Bench::run(const size_t numTrials, const vector<size_t>& args, const bool printDebug) {
+size_t Bench::run(const size_t numTrials,
+                  const vector<size_t>& args,
+                  const bool busTransferToDevice,
+                  const bool busTransferFromDevice,
+                  const bool printDebug) {
 
     // kernel parameter arguments
     _kernel.setParams(args);
@@ -59,8 +63,9 @@ size_t Bench::run(const size_t numTrials, const vector<size_t>& args, const bool
     rebuildProgram();
     if (_printStatus) cerr << " done\t";
 
-    // set kernel arguments
-    if (!_kernel.setArgs(_oclApp, _kernelHandle)) return 0; // fail
+    // set kernel arguments (exclude PCIe bus transfer cost)
+    if (!busTransferToDevice)
+        if (!_kernel.setArgs(_oclApp, _kernelHandle, busTransferToDevice)) return 0; // fail
 
     // work item dimensions
     const vector<size_t> globalDims = _kernel.globalWorkItems();
@@ -72,6 +77,10 @@ size_t Bench::run(const size_t numTrials, const vector<size_t>& args, const bool
         if (_printStatus) cerr << "error: start gettimeofday" << endl;
         return 0; // fail
     }
+
+    // set kernel arguments (include PCIe bus transfer cost)
+    if (busTransferToDevice)
+        if (!_kernel.setArgs(_oclApp, _kernelHandle, busTransferToDevice)) return 0; // fail
 
     // execute kernel for specified number of trials
     int waitKernel;
@@ -98,11 +107,27 @@ size_t Bench::run(const size_t numTrials, const vector<size_t>& args, const bool
         return 0; // fail
     }
 
+    // read back output data from device (including PCIe data transfer cost)
+    if (busTransferFromDevice) {
+        if (!_kernel.syncOutput(_oclApp)) {
+            if (_printStatus) cerr << "error: read output data from device" << endl;
+            return 0; // fail
+        }
+    }
+
     // stop gettimeofday timer
     struct timeval stop_time;
     if (-1 == gettimeofday(&stop_time, 0)) {
         if (_printStatus) cerr << "error: stop gettimeofday" << endl;
         return 0; // fail
+    }
+
+    // read back output data from device (excluding PCIe data transfer cost)
+    if (!busTransferFromDevice) {
+        if (!_kernel.syncOutput(_oclApp)) {
+            if (_printStatus) cerr << "error: read output data from device" << endl;
+            return 0; // fail
+        }
     }
 
     // calculate elapsed time in microseconds
