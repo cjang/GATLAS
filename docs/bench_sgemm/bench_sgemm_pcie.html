@@ -1,0 +1,57 @@
+<html>
+<title>Benchmarks for SGEMM with PCIe bus data transfer on HD 5870</title>
+<body>
+
+<h2>Benchmarks for SGEMM with PCIe bus data transfer on HD 5870</h2>
+
+Several interesting observations:
+<ol>
+ <li>Memory buffer kernels are faster than image kernels when A and B are written from host to device.</li>
+ <li>Performance approaches the same asymptotic maximum in all cases with increasing matrix size. The usual trade of space (memory) for time (gigaFLOPS) applies.</li>
+ <li>Accounting for PCIe bus data transfer will reduce the performance gap between IL/ISA and OpenCL. The host to device I/O bottleneck makes OpenCL more competitive than synthetic kernel benchmarks suggest.</li>
+</ol>
+
+<table>
+ <tr>
+  <td><img src="spreadsheet_icon_bluebox.png"></td>
+  <td>kernel only</td>
+ </tr>
+ <tr>
+  <td><img src="spreadsheet_icon_reddiamond.png"></td>
+  <td>kernel + write A and B from host to device</td>
+ </tr>
+ <tr>
+  <td><img src="spreadsheet_icon_yellowtriangle.png"></td>
+  <td>kernel + read C from device to host</td>
+ </tr>
+ <tr>
+  <td><img src="spreadsheet_icon_greentriangle.png"></td>
+  <td>kernel + write A and B from host to device + read C from device to host</td>
+ </tr>
+</table>
+
+<table>
+ <tr>
+  <td><img src="bench_sgemm_buf_A_B.png"></td>
+  <td><img src="bench_sgemm_img_A_B.png"></td>
+ </tr>
+ <tr>
+  <td><img src="bench_sgemm_buf_At_B.png"></td>
+  <td><img src="bench_sgemm_img_At_B.png"></td>
+ </tr>
+ <tr>
+  <td><img src="bench_sgemm_buf_A_Bt.png"></td>
+  <td><img src="bench_sgemm_img_A_Bt.png"></td>
+ </tr>
+ <tr>
+  <td><img src="bench_sgemm_buf_At_Bt.png"></td>
+  <td><img src="bench_sgemm_img_At_Bt.png"></td>
+ </tr>
+</table>
+
+<p>
+
+<i>Bellevue, WA, May 19, 2010</i>
+
+</body>
+</html>

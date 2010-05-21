@@ -523,6 +523,36 @@ make chart
 
 which assembles a tabular summary of the benchmark data in two files: <i>chartgemm.tsv</i> and <i>chartmm.tsv</i>. These files have a tab separated value format so may be easily imported into a spreadsheet or plotting environment.
 
+<p>
+
+For very detailed benchmarking that takes into account PCIe bus data transfer costs, you can run
+
+<table>
+ <tr>
+  <td> &nbsp;&nbsp;&nbsp;&nbsp; </td>
+  <td>
+<pre>
+make fullbenchgemm
+</pre>
+  </td>
+ </tr>
+</table>
+
+<b>Warning</b> - this will take two to three days to finish! When I did it for my HD 5870, the final results look like this after plotting in charts from a spreadsheet (OpenOffice): <a href="bench_sgemm/bench_sgemm_pcie.html">bench_sgemm_pcie.html</a>. The charts were generated from this data file: <a href="bench_sgemm/fullbench_sgemm.chart">fullbench_sgemm.chart</a> which is output using the command
+
+<table>
+ <tr>
+  <td> &nbsp;&nbsp;&nbsp;&nbsp; </td>
+  <td>
+<pre>
+./chartMatmul fullbenchdata gemm > fullbench_gemm.chart
+</pre>
+  </td>
+ </tr>
+</table>
+
+which assembles the benchmark files for sgemm in subdirectory <i>fullbenchdata</i> into tables in tab separated value format.
+
 <a name="How_to_use_the_benchmarking_command-line_applications">
 <h3>How to use the benchmarking command-line applications</h3>
 </a>
