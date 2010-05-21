@@ -567,11 +567,11 @@ There are four benchmarking tools: <i>bgemm_buffer</i>, <i>bgemm_image</i>, <i>b
   <td> <i>SGEMM using images on the 1st GPU device for 3200x3200 with 10 trials</i> </td>
  </tr>
  <tr>
-  <td> <pre> ./bgemm_buffer -d gpu -n 1024 -t 5 -x 3 </pre> </td>
+  <td> <pre> ./bgemm_buffer -d gpu -n 1024 -t 5 -w 3 </pre> </td>
   <td> <i>SGEMM using memory buffers on the 1st GPU device for 1024x1024 with 5 trials and keeping the 3 best</i> </td>
  </tr>
  <tr>
-  <td> <pre> ./bmm_image -d gpu1 -m 4800 -n 4000 -k 2048 -t 10 -x 10 -a -b </pre> </td>
+  <td> <pre> ./bmm_image -d gpu1 -m 4800 -n 4000 -k 2048 -t 10 -w 10 -a -b </pre> </td>
   <td> <i>matrix multiply using images on the 2nd GPU device for rectangular matrices with 10 trials and keeping the 10 best, matrices A and B are transposed</i> </td>
  </tr>
  <tr>
@@ -584,7 +584,7 @@ There are four benchmarking tools: <i>bgemm_buffer</i>, <i>bgemm_image</i>, <i>b
 
 Status messages are printed ss the auto-tuning proceeds. When the benchmark has finished, the final output looks something like the following.
 
-<i>( Output from: ./bgemm_image -d gpu -n 5120 -t 10 -x 3 -a -e )</i>
+<i>( Output from: ./bgemm_image -d gpu -n 5120 -t 10 -w 3 -a -e )</i>
 <pre>
 [0] 2669300 usec        avg: 1005.84    stddev: 2.47614 5120 5120 5120 8 4 0    argsMNK jkl
 [1] 2671205 usec        avg: 1005.12    stddev: 1.67477 5120 5120 5120 8 4 10   inlineMNK klj

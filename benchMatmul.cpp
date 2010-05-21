@@ -80,14 +80,14 @@ bool parseOpts(int argc, char *argv[],
                bool& paranoidCheck,
                bool& printDebug) {
     int opt;
-    while ((opt = getopt(argc, argv, "heabsrpzd:m:n:k:g:y:w:t:x:")) != -1) {
+    while ((opt = getopt(argc, argv, "heabsrpzd:m:n:k:g:y:x:t:w:")) != -1) {
         switch (opt) {
             case ('h') :
                 cerr << "usage: " << argv[0]
                      << " -d cpu|gpu|cpuX|gpuX -n N [-m M -k K]"
-                        " [-g groupSize [-y blockHeight [-w extraParam]]]"
+                        " [-g groupSize [-y blockHeight [-x extraParam]]]"
                         " [-t numberTrials]"
-                        " [-x topN]"
+                        " [-w topN]"
                         " [-e] [-a] [-b] [-s] [-r] [-p] [-z] [-h]" << endl
                      << "\t-d cpu or gpu device, optional X is the device number" << endl
                      << "\t-m matrix dimension M" << endl
@@ -95,9 +95,9 @@ bool parseOpts(int argc, char *argv[],
                      << "\t-k matrix dimension K" << endl
                      << "\t-g work item group width and height" << endl
                      << "\t-y inner blocking height" << endl
-                     << "\t-w extra parameter" << endl
+                     << "\t-x extra parameter" << endl
                      << "\t-t number of trials (default is 1)" << endl
-                     << "\t-x keep topN (groupSize, blockHeight) combinations" << endl
+                     << "\t-w keep topN (groupSize, blockHeight) combinations" << endl
                      << "\t-e use faster nested optimization (default no)" << endl
                      << "\t-a transpose A (default no)" << endl
                      << "\t-b transpose B (default no)" << endl
@@ -113,9 +113,9 @@ bool parseOpts(int argc, char *argv[],
             case ('k') : K = atoi(optarg); break;
             case ('g') : groupSize = atoi(optarg); break;
             case ('y') : blockHeight = atoi(optarg); break;
-            case ('w') : extraParam = atoi(optarg); break;
+            case ('x') : extraParam = atoi(optarg); break;
             case ('t') : numberTrials = atoi(optarg); break;
-            case ('x') : topN = atoi(optarg); break;
+            case ('w') : topN = atoi(optarg); break;
             case ('e') : nestedOptimization = true; break;
             case ('a') : transposeA = true; break;
             case ('b') : transposeB = true; break;

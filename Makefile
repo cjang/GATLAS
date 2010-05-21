@@ -72,26 +72,26 @@ benchdata :
 benchgemmbuffer : benchdata
 	@echo benchmarking SGEMM using memory buffers
 	@echo warning - this may take a few hours (two hours on my HD 5870)
-	./benchMatmul benchdata gemm buffer 1024 5632 256
-	./benchMatmul benchdata gemm buffer 1600 5600 800
+	./benchMatmul gpu benchdata gemm buffer 1024 5632 256
+	./benchMatmul gpu benchdata gemm buffer 1600 5600 800
 
 benchgemmimage : benchdata
 	@echo benchmarking SGEMM using images
 	@echo warning - this may take a few hours (about 90 minutes my HD 5870)
-	./benchMatmul benchdata gemm image 1024 5632 256
-	./benchMatmul benchdata gemm image 1600 5600 800
+	./benchMatmul gpu benchdata gemm image 1024 5632 256
+	./benchMatmul gpu benchdata gemm image 1600 5600 800
 
 benchmmbuffer : benchdata
 	@echo benchmarking matrix multiply using memory buffers
 	@echo warning - this may take a few hours (two hours on my HD 5870)
-	./benchMatmul benchdata mm buffer 1024 5632 256
-	./benchMatmul benchdata mm buffer 1600 5600 800
+	./benchMatmul gpu benchdata mm buffer 1024 5632 256
+	./benchMatmul gpu benchdata mm buffer 1600 5600 800
 
 benchmmimage : benchdata
 	@echo benchmarking matrix multiply using images
 	@echo warning - this may take a few hours (about 90 minutes my HD 5870)
-	./benchMatmul benchdata mm image 1024 5632 256
-	./benchMatmul benchdata mm image 1600 5600 800
+	./benchMatmul gpu benchdata mm image 1024 5632 256
+	./benchMatmul gpu benchdata mm image 1600 5600 800
 
 benchgemm : benchgemmbuffer benchgemmimage
 benchmm : benchmmbuffer benchmmimage
@@ -115,24 +115,24 @@ fullbenchdata :
 	mkdir fullbenchdata
 
 fullbenchgemmbuffer : fullbenchdata
-	./benchMatmul fullbenchdata gemm buffer 128 5632 64
-	./benchMatmul fullbenchdata gemm buffer to 128 5632 64
-	./benchMatmul fullbenchdata gemm buffer from 128 5632 64
-	./benchMatmul fullbenchdata gemm buffer tofrom 128 5632 64
-	./benchMatmul fullbenchdata gemm buffer 100 5600 100
-	./benchMatmul fullbenchdata gemm buffer to 100 5600 100
-	./benchMatmul fullbenchdata gemm buffer from 100 5600 100
-	./benchMatmul fullbenchdata gemm buffer tofrom 100 5600 100
+	./benchMatmul gpu fullbenchdata gemm buffer 128 5632 64
+	./benchMatmul gpu fullbenchdata gemm buffer to 128 5632 64
+	./benchMatmul gpu fullbenchdata gemm buffer from 128 5632 64
+	./benchMatmul gpu fullbenchdata gemm buffer tofrom 128 5632 64
+	./benchMatmul gpu fullbenchdata gemm buffer 100 5600 100
+	./benchMatmul gpu fullbenchdata gemm buffer to 100 5600 100
+	./benchMatmul gpu fullbenchdata gemm buffer from 100 5600 100
+	./benchMatmul gpu fullbenchdata gemm buffer tofrom 100 5600 100
 
 fullbenchgemmimage : fullbenchdata
-	./benchMatmul fullbenchdata gemm image 128 5632 64
-	./benchMatmul fullbenchdata gemm image to 128 5632 64
-	./benchMatmul fullbenchdata gemm image from 128 5632 64
-	./benchMatmul fullbenchdata gemm image tofrom 128 5632 64
-	./benchMatmul fullbenchdata gemm image 100 5600 100
-	./benchMatmul fullbenchdata gemm image to 100 5600 100
-	./benchMatmul fullbenchdata gemm image from 100 5600 100
-	./benchMatmul fullbenchdata gemm image tofrom 100 5600 100
+	./benchMatmul gpu fullbenchdata gemm image 128 5632 64
+	./benchMatmul gpu fullbenchdata gemm image to 128 5632 64
+	./benchMatmul gpu fullbenchdata gemm image from 128 5632 64
+	./benchMatmul gpu fullbenchdata gemm image tofrom 128 5632 64
+	./benchMatmul gpu fullbenchdata gemm image 100 5600 100
+	./benchMatmul gpu fullbenchdata gemm image to 100 5600 100
+	./benchMatmul gpu fullbenchdata gemm image from 100 5600 100
+	./benchMatmul gpu fullbenchdata gemm image tofrom 100 5600 100
 
 fullbenchgemm : fullbenchgemmbuffer fullbenchgemmimage
 
