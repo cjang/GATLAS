@@ -18,6 +18,7 @@
 #include "OCLApp.hpp"
 #include "OCLUtil.hpp"
 #include <iostream>
+#include <string.h>
 
 using namespace std;
 
@@ -304,7 +305,11 @@ OCLApp::buildProgram(const vector<string>& program_source,
                                  options.c_str(),
                                  NULL,
                                  NULL),
-                  "build program")) return false; // failure
+                  "build program")) {
+
+        cerr << buildLog() << endl;
+        return false; // failure
+    }
 
     return true; // success
 }
@@ -316,6 +321,7 @@ OCLApp::buildLog() const
 
     size_t msgsize = 0;
     char msgbuf[10240];
+    memset(msgbuf, 0, sizeof(msgbuf));
 
     if (!checkFail(
         clGetProgramBuildInfo(
