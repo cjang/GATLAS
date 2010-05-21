@@ -91,10 +91,10 @@ bool KernelGenMatmulBuffer::syncOutput(OCLApp& oclApp) {
 
 bool KernelGenMatmulBuffer::checkOutput(OCLApp& oclApp, const bool printOutput) {
     if (_paranoidCheck) {
-        return checkBuffer(oclApp, _handleC, dimN(), dimM(), _paranoidC, printOutput);
+        return checkBuffer<scalar>(oclApp, _handleC, dimN(), dimM(), _paranoidC, printOutput);
     } else {
         const scalar testValue = dimK();
-        return checkBuffer(oclApp, _handleC, dimN(), dimM(), testValue, printOutput);
+        return checkBuffer<scalar>(oclApp, _handleC, dimN(), dimM(), testValue, printOutput);
     }
 }
 
@@ -112,7 +112,7 @@ bool KernelGenMatmulBuffer::setArgs(OCLApp& oclApp, const size_t kernelHandle, c
             if (!syncBufferToDevice(oclApp, _handleB)) return false;
         }
         // matrix C
-        if (!clearBuffer(oclApp, _handleC)) return false;
+        if (!clearBuffer<scalar>(oclApp, _handleC)) return false;
     }
 
     const scalar alpha = _paranoidCheck ? posrand<scalar>() : 1;
@@ -122,9 +122,9 @@ bool KernelGenMatmulBuffer::setArgs(OCLApp& oclApp, const size_t kernelHandle, c
     if (_paranoidCheck) {
 
         // fill A, B and C matrices with random values
-        if (fillrandBuffer(oclApp, _handleA, dimM() * dimK()) &&
-            fillrandBuffer(oclApp, _handleB, dimK() * dimN()) &&
-            fillrandBuffer(oclApp, _handleC, dimM() * dimN())) {
+        if (fillrandBuffer<scalar>(oclApp, _handleA, dimM() * dimK()) &&
+            fillrandBuffer<scalar>(oclApp, _handleB, dimK() * dimN()) &&
+            fillrandBuffer<scalar>(oclApp, _handleC, dimM() * dimN())) {
 
             const scalar *ptrA = oclApp.bufferPtr<scalar>(_handleA);
             const scalar *ptrB = oclApp.bufferPtr<scalar>(_handleB);

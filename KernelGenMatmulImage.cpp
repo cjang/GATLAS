@@ -86,10 +86,10 @@ bool KernelGenMatmulImage::syncOutput(OCLApp& oclApp) {
 
 bool KernelGenMatmulImage::checkOutput(OCLApp& oclApp, const bool printOutput) {
     if (_paranoidCheck) {
-        return checkBuffer(oclApp, _handleC, dimN(), dimM(), _paranoidC, printOutput);
+        return checkBuffer<scalar>(oclApp, _handleC, dimN(), dimM(), _paranoidC, printOutput);
     } else {
         const scalar testValue = dimK();
-        return checkBuffer(oclApp, _handleC, dimN(), dimM(), testValue, printOutput);
+        return checkBuffer<scalar>(oclApp, _handleC, dimN(), dimM(), testValue, printOutput);
     }
 }
 
@@ -120,7 +120,7 @@ bool KernelGenMatmulImage::setArgs(OCLApp& oclApp, const size_t kernelHandle, co
             if (!syncImageToDevice(oclApp, _handleB)) return false;
         }
         // matrix C
-        if (!clearBuffer(oclApp, _handleC)) return false;
+        if (!clearBuffer<scalar>(oclApp, _handleC)) return false;
     }
 
     const scalar alpha = _paranoidCheck ? posrand<scalar>() : 1;
@@ -132,7 +132,7 @@ bool KernelGenMatmulImage::setArgs(OCLApp& oclApp, const size_t kernelHandle, co
         // fill A, B and C matrices with random values
         if (fillrandImage(oclApp, _handleA, dimM() * dimK()) &&
             fillrandImage(oclApp, _handleB, dimK() * dimN()) &&
-            fillrandBuffer(oclApp, _handleC, dimM() * dimN())) {
+            fillrandBuffer<scalar>(oclApp, _handleC, dimM() * dimN())) {
 
             const scalar *ptrA = oclApp.imagePtr(_handleA);
             const scalar *ptrB = oclApp.imagePtr(_handleB);

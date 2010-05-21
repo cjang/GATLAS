@@ -52,6 +52,169 @@ double absdiff(const SCALAR_TYPE *m1, const SCALAR_TYPE *m2, const size_t length
     return accumdiff;
 }
 
+template <typename T>
+bool checkArray(const T *ptr, const size_t length, const T testValue) {
+    bool goodElements = true;
+    for (size_t i = 0; i < length; i++)
+        if (testValue != ptr[i]) goodElements = false;
+    return goodElements;
+}
+
+template <typename T>
+bool clearBuffer(OCLApp& oclApp, const size_t bufferIndex, const T value = 0) {
+    oclApp.memsetBuffer<T>(bufferIndex, value);
+    const int syncBuf = oclApp.enqueueWriteBuffer(bufferIndex);
+    if (-1 == syncBuf || !oclApp.wait(syncBuf)) {
+        std::cerr << "error: reset output buffer " << bufferIndex << std::endl;
+        return false;
+    }
+    return true;
+}
+
+bool clearImage(OCLApp& oclApp, const size_t imageIndex);
+
+template <typename T>
+bool fillrandBuffer(OCLApp& oclApp, const size_t bufferIndex, const size_t length) {
+    T *ptr = oclApp.bufferPtr<T>(bufferIndex);
+    fillrand<T>(ptr, length);
+    const int syncBuf = oclApp.enqueueWriteBuffer(bufferIndex);
+    if (-1 == syncBuf || !oclApp.wait(syncBuf)) {
+        std::cerr << "error: random fill buffer " << bufferIndex << std::endl;
+        return false;
+    }
+    return true;
+}
+
+bool fillrandImage(OCLApp& oclApp, const size_t imageIndex, const size_t length);
+
+template <typename T>
+void printArray(const T *ptr, const size_t length) {
+    for (size_t j = 0; j < length; j++) {
+        if (0 != j) std::cerr << " ";
+        std::cerr << ptr[j];
+    }
+    std::cerr << std::endl;
+}
+
+template <typename T>
+void printArray(const T *ptr, const size_t width, const size_t height) {
+    for (size_t i = 0; i < height; i++) {
+        std::cerr << "[" << i << "]";
+        for (size_t j = 0; j < width; j++)
+            std::cerr << " " << ptr[i * width + j];
+        std::cerr << std::endl;
+    }
+}
+
+template <typename T>
+void printDiff(const T *ptr1, const T *ptr2, const size_t length) {
+    for (size_t j = 0; j < length; j++) {
+        if (0 != j) std::cerr << " ";
+        std::cerr << (ptr1[j] - ptr2[j]);
+    }
+    std::cerr << std::endl;
+}
+
+template <typename T>
+void printDiff(const T *ptr1, const T *ptr2, const size_t width, const size_t height) {
+    for (size_t i = 0; i < height; i++) {
+        std::cerr << "[" << i << "]";
+        for (size_t j = 0; j < width; j++)
+            std::cerr << " " << (ptr1[i * width + j] - ptr2[i * width +j]);
+        std::cerr << std::endl;
+    }
+}
+
+template <typename T>
+bool checkBuffer(OCLApp& oclApp,
+                 const size_t bufferIndex,
+                 const size_t length,
+                 const T      testValue,
+                 const bool   printOutput) {
+    const T *ptr = oclApp.bufferPtr<T>(bufferIndex);
+
+    // quick and primitive test here
+    // e.g. if A and B are all 1s, then each element of C equals the matrix size
+    const bool goodElements = checkArray(ptr, length, testValue);
+
+    // print output matrix for debugging
+    if (printOutput) printArray(ptr, length);
+
+    return goodElements;
+}
+
+template <typename T>
+bool checkBuffer(OCLApp& oclApp,
+                 const size_t bufferIndex,
+                 const size_t width,
+                 const size_t height,
+                 const T      testValue,
+                 const bool   printOutput) {
+    const T *ptr = oclApp.bufferPtr<T>(bufferIndex);
+
+    // quick and primitive test here
+    // e.g. if A and B are all 1s, then each element of C equals the matrix size
+    const bool goodElements = checkArray(ptr, width * height, testValue);
+
+    // print output matrix for debugging
+    if (printOutput) printArray(ptr, width, height);
+
+    return goodElements;
+}
+
+bool checkImage(OCLApp& oclApp,
+                const size_t imageIndex,
+                const size_t length,
+                const float  testValue,
+                const bool   printOutput);
+
+bool checkImage(OCLApp& oclApp,
+                const size_t imageIndex,
+                const size_t width,
+                const size_t height,
+                const float  testValue,
+                const bool   printOutput);
+
+template <typename T>
+bool checkBuffer(OCLApp&       oclApp,
+                 const size_t  bufferIndex,
+                 const size_t  length,
+                 const T      *testBuffer,
+                 const bool    printOutput) {
+    const T *ptr = oclApp.bufferPtr<T>(bufferIndex);
+    const double diff = absdiff(ptr, testBuffer, length);
+    std::cerr << "absdiff: " << diff << "\t";
+    if (printOutput) printDiff(ptr, testBuffer, length);
+    return diff < static_cast<double>(1) / (length);
+}
+
+template <typename T>
+bool checkBuffer(OCLApp&       oclApp,
+                 const size_t  bufferIndex,
+                 const size_t  width,
+                 const size_t  height,
+                 const T      *testBuffer,
+                 const bool    printOutput) {
+    const T *ptr = oclApp.bufferPtr<T>(bufferIndex);
+    const double diff = absdiff(ptr, testBuffer, width * height);
+    std::cerr << "absdiff: " << diff << "\t";
+    if (printOutput) printDiff(ptr, testBuffer, width, height);
+    return diff < static_cast<double>(1) / (width * height);
+}
+
+bool checkImage(OCLApp&       oclApp,
+                const size_t  imageIndex,
+                const size_t  length,
+                const float  *testImage,
+                const bool    printOutput);
+
+bool checkImage(OCLApp&       oclApp,
+                const size_t  imageIndex,
+                const size_t  width,
+                const size_t  height,
+                const float  *testImage,
+                const bool    printOutput);
+
 int createImageR(OCLApp& oclApp, const size_t width, const size_t height,
                  const std::string& argName,
                  const float value = 0, const bool pinned = false);
@@ -123,6 +286,11 @@ int createBufferRW(OCLApp& oclApp, const size_t bufSize,
     }
     return bufHandle;
 }
+
+bool syncBufferToDevice(OCLApp& oclApp, const size_t bufferIndex);
+bool syncBufferFromDevice(OCLApp& oclApp, const size_t bufferIndex);
+bool syncImageToDevice(OCLApp& oclApp, const size_t imageIndex);
+bool syncImageFromDevice(OCLApp& oclApp, const size_t imageIndex);
 
 bool setArgGlobal(OCLApp& oclApp, const size_t kernelHandle, const size_t argIndex, const size_t bufHandle,
                   const std::string& argName);

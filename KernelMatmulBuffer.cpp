@@ -91,10 +91,10 @@ bool KernelMatmulBuffer::syncOutput(OCLApp& oclApp) {
 
 bool KernelMatmulBuffer::checkOutput(OCLApp& oclApp, const bool printOutput) {
     if (_paranoidCheck) {
-        return checkBuffer(oclApp, _handleC, dimN(), dimM(), _paranoidC, printOutput);
+        return checkBuffer<scalar>(oclApp, _handleC, dimN(), dimM(), _paranoidC, printOutput);
     } else {
         const scalar testValue = dimK();
-        return checkBuffer(oclApp, _handleC, dimN(), dimM(), testValue, printOutput);
+        return checkBuffer<scalar>(oclApp, _handleC, dimN(), dimM(), testValue, printOutput);
     }
 }
 
@@ -112,15 +112,15 @@ bool KernelMatmulBuffer::setArgs(OCLApp& oclApp, const size_t kernelHandle, cons
             if (!syncBufferToDevice(oclApp, _handleB)) return false;
         }
         // matrix C
-        if (!clearBuffer(oclApp, _handleC)) return false;
+        if (!clearBuffer<scalar>(oclApp, _handleC)) return false;
     }
 
     // paranoid check
     if (_paranoidCheck) {
 
         // fill A and B matrices with random values
-        if (fillrandBuffer(oclApp, _handleA, dimM() * dimK()) &&
-            fillrandBuffer(oclApp, _handleB, dimK() * dimN())) {
+        if (fillrandBuffer<scalar>(oclApp, _handleA, dimM() * dimK()) &&
+            fillrandBuffer<scalar>(oclApp, _handleB, dimK() * dimN())) {
 
             const scalar *ptrA = oclApp.bufferPtr<scalar>(_handleA);
             const scalar *ptrB = oclApp.bufferPtr<scalar>(_handleB);
