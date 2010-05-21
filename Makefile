@@ -118,17 +118,21 @@ fullbenchgemmbuffer : fullbenchdata
 	./benchMatmul fullbenchdata gemm buffer 128 5632 64
 	./benchMatmul fullbenchdata gemm buffer to 128 5632 64
 	./benchMatmul fullbenchdata gemm buffer from 128 5632 64
+	./benchMatmul fullbenchdata gemm buffer tofrom 128 5632 64
 	./benchMatmul fullbenchdata gemm buffer 100 5600 100
 	./benchMatmul fullbenchdata gemm buffer to 100 5600 100
 	./benchMatmul fullbenchdata gemm buffer from 100 5600 100
+	./benchMatmul fullbenchdata gemm buffer tofrom 100 5600 100
 
 fullbenchgemmimage : fullbenchdata
 	./benchMatmul fullbenchdata gemm image 128 5632 64
 	./benchMatmul fullbenchdata gemm image to 128 5632 64
 	./benchMatmul fullbenchdata gemm image from 128 5632 64
+	./benchMatmul fullbenchdata gemm image tofrom 128 5632 64
 	./benchMatmul fullbenchdata gemm image 100 5600 100
 	./benchMatmul fullbenchdata gemm image to 100 5600 100
 	./benchMatmul fullbenchdata gemm image from 100 5600 100
+	./benchMatmul fullbenchdata gemm image tofrom 100 5600 100
 
 fullbenchgemm : fullbenchgemmbuffer fullbenchgemmimage
 
