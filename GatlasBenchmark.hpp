@@ -53,6 +53,9 @@ struct KernelInterface
     virtual bool syncOutput(OCLApp& oclApp) = 0;
     virtual bool checkOutput(OCLApp& oclApp, const bool printOutput = false) = 0;
 
+    // switches on paranoid checking
+    virtual void paranoidCheck() = 0;
+
     // work items
     virtual std::vector<size_t> globalWorkItems() const = 0;
     virtual std::vector<size_t> localWorkItems() const = 0;
@@ -72,7 +75,7 @@ class Bench
 
     const bool               _printStatus;
 
-    void rebuildProgram();
+    bool rebuildProgram();
 
 public:
 

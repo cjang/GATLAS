@@ -21,13 +21,45 @@
 #include <string>
 #include <unistd.h>
 
+#include "GatlasBenchmark.hpp"
+#include "KernelProbeAutoVectorize.hpp"
 #include "KernelFile.hpp"
 
 #include "using_namespace"
 
 using namespace std;
 
+// explicitly vectorized kernels
+typedef float scalar;
+static const size_t VECTOR_LENGTH = 4;
+typedef VecType<scalar, VECTOR_LENGTH> scalarN;
+
+int getDeviceIndex(OCLBase& oclBase,
+                   const string& device) {
+    if ("cpu" == device || "cpu0" == device)
+        return oclBase.cpuIndexes().empty() ? -1 : oclBase.cpuIndexes()[0];
+    else if ("gpu" == device || "gpu0" == device)
+        return oclBase.gpuIndexes().empty() ? -1 : oclBase.gpuIndexes()[0];
+    else {
+        if (0 == device.find("cpu")) {
+            stringstream ss;
+            ss << device.substr(3);
+            size_t index = 0;
+            ss >> index;
+            return oclBase.cpuIndexes().empty() ? -1 : oclBase.cpuIndexes()[index];
+        } else if (0 == device.find("gpu")) {
+            stringstream ss;
+            ss << device.substr(3);
+            size_t index = 0;
+            ss >> index;
+            return oclBase.gpuIndexes().empty() ? -1 : oclBase.gpuIndexes()[index];
+        }
+    }
+    return -1;
+}
+
 bool parseOpts(int argc, char *argv[],
+               string& device,
                int& M,
                int& N,
                int& K,
@@ -37,13 +69,14 @@ bool parseOpts(int argc, char *argv[],
                bool& transposeA,
                bool& transposeB) {
     int opt;
-    while ((opt = getopt(argc, argv, "habm:n:k:g:y:x:")) != -1) {
+    while ((opt = getopt(argc, argv, "habd:m:n:k:g:y:x:")) != -1) {
         switch (opt) {
             case ('h') :
                 cerr << "usage: " << argv[0]
-                     << " -n N [-m M -k K]"
+                     << " -d cpu|gpu|cpuX|gpuX -n N [-m M -k K]"
                         " -g groupSize -y blockHeight -x extraParam"
                         " [-a] [-b] [-h]" << endl
+                     << "\t-d cpu or gpu device, optional X is the device number" << endl
                      << "\t-m matrix dimension M" << endl
                      << "\t-n matrix dimension N" << endl
                      << "\t-k matrix dimension K" << endl
@@ -54,6 +87,7 @@ bool parseOpts(int argc, char *argv[],
                      << "\t-b transpose B (default no)" << endl
                      << "\t-h help" << endl;
                 exit(1);
+            case ('d') : device = optarg; break;
             case ('m') : M = atoi(optarg); break;
             case ('n') : N = atoi(optarg); break;
             case ('k') : K = atoi(optarg); break;
@@ -68,6 +102,10 @@ bool parseOpts(int argc, char *argv[],
     // validate matrix dimensions
     const size_t VL = KernelBaseMatmul::VECTOR_LENGTH;
     bool rc = true;
+    if (0 != device.find("cpu") && 0 != device.find("gpu")) {
+        cerr << "error: invalid device " << device << endl;
+        rc = false;
+    }
     if (-1 == N) {
         cerr << "error: matrix dimension N must be specified" << endl;
         rc = false;
@@ -125,18 +163,40 @@ bool parseOpts(int argc, char *argv[],
 
 int main(int argc, char *argv[])
 {
+    string device = "<unspecified>";
     int M = -1, N = -1, K = -1;
     int groupSize = -1, blockHeight = -1, extraParam = -1;
     bool transposeA = false, transposeB = false;
 
     if (!parseOpts(argc, argv,
+                   device,
                    M, N, K,
                    groupSize, blockHeight, extraParam,
                    transposeA, transposeB))
         exit(1);
 
+    OCLBase oclBase;
+    const size_t device_index = getDeviceIndex(oclBase, device);
+    OCLApp oclApp(oclBase, device_index);
+
     // OpenCL parameterized kernel generator class
     KERNEL_CLASS kernel(transposeA, transposeB);
+
+    Bench(oclApp, kernel);
+
+    // does this device support vector attribute hint?
+    // ATI    - ok
+    // nVidia - ok but slow (needs scalar kernel)
+    // CELL   - program build failure
+    KernelProbeAutoVectorize<scalarN> kpav;
+    Bench kpavBench(oclApp, kpav);
+    const vector<size_t> kpavArgs = kpav.parameters(true);
+    if (0 == kpavBench.run(1, kpavArgs, false, false, false)) {
+        cout << "device does not support vector attribute hint" << endl;
+        kernel.setUseAttrAutoVec(false);
+    } else {
+        cout << "vector attribute hint ok" << endl;
+    }
 
     // matrix dimensions, outer and inner blocking, extra parameters
     if (kernel.setParams(M, N, K, groupSize, blockHeight, extraParam)) {

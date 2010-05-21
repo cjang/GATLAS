@@ -25,7 +25,7 @@ ostream& operator<< (ostream& os, const KernelInterface& k) {
     return k.print(os);
 }
 
-void Bench::rebuildProgram() {
+bool Bench::rebuildProgram() {
     // program source
     stringstream ss;
     ss << _kernel;
@@ -36,6 +36,9 @@ void Bench::rebuildProgram() {
     if (_oclApp.buildProgram(_programSource)) {
         // create kernel
         _kernelHandle = _oclApp.createKernel(_kernel.kernelName());
+        return true;
+    } else {
+        return false;
     }
 }
 
@@ -60,7 +63,7 @@ size_t Bench::run(const size_t numTrials,
 
     // kernels change depending on arguments
     if (_printStatus) cerr << "rebuilding kernel...";
-    rebuildProgram();
+    if (! rebuildProgram()) return 0; // build program failed
     if (_printStatus) cerr << " done\t";
 
     // set kernel arguments (exclude PCIe bus transfer cost)

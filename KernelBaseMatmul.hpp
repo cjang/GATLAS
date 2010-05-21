@@ -46,11 +46,16 @@ class KernelBaseMatmul : public KernelInterface
     // optional predicate to fix inner product accumulation loop order
     int _predicateLoopOrder;
 
+    // kernel vector attribute hint is not supported on all platforms
+    bool _useAttrAutoVec; // default value is true
+
 public:
     // explicitly vectorized kernels
     typedef float scalar;
     static const size_t VECTOR_LENGTH = 4;
     typedef VecType<scalar, VECTOR_LENGTH> scalarN;
+
+    void setUseAttrAutoVec(const bool value);
 
 protected:
     // work item IDs
@@ -60,6 +65,8 @@ protected:
     const ConstantValue<std::string> blockCol;
     const ConstantValue<std::string> row;
     const ConstantValue<std::string> col;
+
+    bool getUseAttrAutoVec() const;
 
     size_t dimM() const;
     size_t dimN() const;

@@ -26,11 +26,17 @@
 #include <unistd.h>
 #include "GatlasBenchmark.hpp"
 
+#include "KernelProbeAutoVectorize.hpp"
 #include "KernelFile.hpp"
 
 #include "using_namespace"
 
 using namespace std;
+
+// explicitly vectorized kernels
+typedef float scalar;
+static const size_t VECTOR_LENGTH = 4;
+typedef VecType<scalar, VECTOR_LENGTH> scalarN;
 
 int getDeviceIndex(OCLBase& oclBase,
                    const string& device) {
@@ -106,7 +112,7 @@ bool parseOpts(int argc, char *argv[],
             case ('n') : N = atoi(optarg); break;
             case ('k') : K = atoi(optarg); break;
             case ('g') : groupSize = atoi(optarg); break;
-	    case ('y') : blockHeight = atoi(optarg); break;
+            case ('y') : blockHeight = atoi(optarg); break;
             case ('w') : extraParam = atoi(optarg); break;
             case ('t') : numberTrials = atoi(optarg); break;
             case ('x') : topN = atoi(optarg); break;
@@ -229,17 +235,21 @@ vector< vector<size_t> > getParams(const KernelBaseMatmul& kernel,
     return pargs;
 }
 
-void mainLoop(KernelBaseMatmul& kernel,
-              Bench& bench,
-              const vector< vector<size_t> >& pargs,
-              vector<bool>& pargsOk,
-              vector<double>& pargsAverage,
-              const size_t numberTrials,
-              const size_t topN,
-              const bool busTransferToDevice,
-              const bool busTransferFromDevice,
-              const bool printDebug,
-              const bool paranoidCheck) {
+// return number of benchmarked kernels that were ok
+size_t mainLoop(KernelInterface& kernel,
+                Bench& bench,
+                const vector< vector<size_t> >& pargs,
+                vector<bool>& pargsOk,
+                vector<double>& pargsAverage,
+                const size_t numberTrials,
+                const size_t topN,
+                const bool busTransferToDevice,
+                const bool busTransferFromDevice,
+                const bool printDebug,
+                const bool paranoidCheck) {
+
+    size_t goodKernelCount = 0;
+
     vector<size_t> pargsTime;
     vector<size_t> pargsFlops;
     vector<string> pargsDesc;
@@ -282,6 +292,8 @@ void mainLoop(KernelBaseMatmul& kernel,
                     pargsOk[i] = false;
                     continue;
                 }
+
+                goodKernelCount++;
 
                 const size_t numflops = kernel.numberFlops();
 
@@ -366,34 +378,39 @@ void mainLoop(KernelBaseMatmul& kernel,
         printParams(cout, args);
         cout << "\t" << desc << endl;
     }
+
+    return goodKernelCount;
 }
 
-void mainLoop(KernelBaseMatmul& kernel,
-              Bench& bench,
-              const vector< vector<size_t> >& pargs,
-              const size_t numberTrials,
-              const size_t topN,
-              const bool busTransferToDevice,
-              const bool busTransferFromDevice,
-              const bool printDebug,
-              const bool paranoidCheck) {
+size_t mainLoop(KernelInterface& kernel,
+                Bench& bench,
+                const vector< vector<size_t> >& pargs,
+                const size_t numberTrials,
+                const size_t topN,
+                const bool busTransferToDevice,
+                const bool busTransferFromDevice,
+                const bool printDebug,
+                const bool paranoidCheck) {
+
     vector<bool> pargsOk;
     vector<double> pargsAverage;
+
     for (size_t i = 0; i < pargs.size(); i++) {
         pargsOk.push_back(true);
         pargsAverage.push_back(0);
     }
-    mainLoop(kernel,
-             bench,
-             pargs,
-             pargsOk,
-             pargsAverage,
-             numberTrials,
-             topN,
-             busTransferToDevice,
-             busTransferFromDevice,
-             printDebug,
-             paranoidCheck);
+
+    return mainLoop(kernel,
+                    bench,
+                    pargs,
+                    pargsOk,
+                    pargsAverage,
+                    numberTrials,
+                    topN,
+                    busTransferToDevice,
+                    busTransferFromDevice,
+                    printDebug,
+                    paranoidCheck);
 }
 
 int main(int argc, char *argv[])
@@ -428,6 +445,21 @@ int main(int argc, char *argv[])
 
     KERNEL_CLASS kernel(transposeA, transposeB);
     Bench bench(oclApp, kernel);
+
+    // does this device support vector attribute hint?
+    // ATI    - ok
+    // nVidia - ok but slow (needs scalar kernel)
+    // CELL   - program build failure
+    KernelProbeAutoVectorize<scalarN> kpav;
+    Bench kpavBench(oclApp, kpav);
+    vector< vector<size_t> > kpavArgs;
+    kpavArgs.push_back(kpav.parameters(true));
+    if (0 == mainLoop(kpav, kpavBench, kpavArgs, 1, -1, false, false, false, false)) {
+        cout << "device does not support vector attribute hint" << endl;
+        kernel.setUseAttrAutoVec(false);
+    } else {
+        cout << "vector attribute hint ok" << endl;
+    }
 
     vector< vector<size_t> > pargs = getParams(kernel,
                                                M, N, K,

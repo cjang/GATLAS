@@ -19,6 +19,14 @@
 
 #include "declare_namespace"
 
+void KernelBaseMatmul::setUseAttrAutoVec(const bool value) {
+    _useAttrAutoVec = value;
+}
+
+bool KernelBaseMatmul::getUseAttrAutoVec() const {
+    return _useAttrAutoVec;
+}
+
 size_t KernelBaseMatmul::dimM() const { return _dimM; }
 size_t KernelBaseMatmul::dimN() const { return _dimN; }
 size_t KernelBaseMatmul::dimK() const { return _dimK; }
@@ -174,6 +182,7 @@ KernelBaseMatmul::KernelBaseMatmul(const bool transposeA,
       _transposeB(transposeB),
       _predicateInlineMNK(-1),
       _predicateLoopOrder(-1),
+      _useAttrAutoVec(true),
       globalRow(func_string<size_t>("get_global_id", 1)),
       globalCol(func_string<size_t>("get_global_id", 0)),
       blockRow(func_string<size_t>("get_group_id", 1)),

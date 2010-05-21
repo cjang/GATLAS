@@ -168,7 +168,7 @@ ostream& KernelMatmulBuffer::print(ostream& os) const {
     FunctionDeclaration kernelDecl(kernelName());
     kernelDecl.returnType<void>();
     kernelDecl.qualify(KERNEL);
-    kernelDecl.qualify(attrAutoVec);
+    if (getUseAttrAutoVec()) kernelDecl.qualify(attrAutoVec);
 
     // kernel arguments
     Var< scalarN* >       matC("matC", GLOBAL, kernelDecl);
