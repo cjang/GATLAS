@@ -23,12 +23,69 @@ using namespace std;
 
 #include "declare_namespace"
 
-// integral valued cl_device_info parameters
-static const cl_device_info intparam[] = {
-    CL_DEVICE_TYPE,
+// It's ugly but safe to have a parameter name list for each type.
+// Unfortunately, different platform SDKs use native integral types
+// of different sizes. Instead of trying to find one largest type
+// big enough to contain all of them, have separate lists using the
+// OpenCL typedefs directly.
+//
+// Template metaprogramming could hide some of this. However, other
+// ugliness would then be introduced. On balance, the most direct
+// and simple-minded solution is preferable.
+
+template <typename T>
+void storeDeviceInfoParams(std::map<cl_device_info, std::vector<T> >& mapDevInfo,
+                           const cl_device_info *listParams,
+                           const size_t numParams,
+                           const cl_device_id deviceId) {
+    for (size_t i = 0; i < numParams; i++)
+    {
+        const cl_device_info key = listParams[i];
+
+        T value;
+
+        mapDevInfo[key].push_back(
+            checkFail(
+                clGetDeviceInfo(deviceId,
+                                key,
+                                sizeof(T),
+                                &value,
+                                NULL),
+                "get device info ",
+                devinfo(key))
+                ? 0
+                : value);
+    }
+}
+
+template <typename T>
+void printDeviceInfoParams(std::map<cl_device_info, std::vector<T> >& mapDevInfo,
+                           const cl_device_info *listParams,
+                           const size_t numParams,
+                           const size_t device_index,
+                           const char *prepend) {
+    for (size_t i = 0; i < numParams; i++)
+    {
+        const cl_device_info key = listParams[i];
+
+        cout
+            << prepend << "\t"
+            << devinfo(key) << "\t"
+            << devinfovalue(key, mapDevInfo[key][device_index])
+            << endl;
+    }
+}
+
+
+// cl_device_type valued cl_device_info parameters
+static const cl_device_info cl_device_type_params[] = {
+    CL_DEVICE_TYPE
+};
+
+// cl_uint valued cl_device_info parameters
+static const cl_device_info cl_uint_params[] = {
     CL_DEVICE_VENDOR_ID,
     CL_DEVICE_MAX_COMPUTE_UNITS,
-    CL_DEVICE_MAX_WORK_GROUP_SIZE,
     CL_DEVICE_PREFERRED_VECTOR_WIDTH_CHAR,
     CL_DEVICE_PREFERRED_VECTOR_WIDTH_SHORT,
     CL_DEVICE_PREFERRED_VECTOR_WIDTH_INT,
@@ -37,39 +94,72 @@ static const cl_device_info intparam[] = {
     CL_DEVICE_PREFERRED_VECTOR_WIDTH_DOUBLE,
     CL_DEVICE_MAX_CLOCK_FREQUENCY,
     CL_DEVICE_ADDRESS_BITS,
-    CL_DEVICE_MAX_MEM_ALLOC_SIZE,
-    CL_DEVICE_IMAGE_SUPPORT,
     CL_DEVICE_MAX_READ_IMAGE_ARGS,
     CL_DEVICE_MAX_WRITE_IMAGE_ARGS,
+    CL_DEVICE_MAX_SAMPLERS,
+    CL_DEVICE_MEM_BASE_ADDR_ALIGN,
+    CL_DEVICE_MIN_DATA_TYPE_ALIGN_SIZE,
+    CL_DEVICE_GLOBAL_MEM_CACHELINE_SIZE,
+    CL_DEVICE_MAX_CONSTANT_ARGS
+};
+
+// size_t valued cl_device_info parameters
+static const cl_device_info size_t_params[] = {
+    CL_DEVICE_MAX_WORK_GROUP_SIZE,
     CL_DEVICE_IMAGE2D_MAX_WIDTH,
     CL_DEVICE_IMAGE2D_MAX_HEIGHT,
     CL_DEVICE_IMAGE3D_MAX_WIDTH,
     CL_DEVICE_IMAGE3D_MAX_HEIGHT,
     CL_DEVICE_IMAGE3D_MAX_DEPTH,
-    CL_DEVICE_MAX_SAMPLERS,
     CL_DEVICE_MAX_PARAMETER_SIZE,
-    CL_DEVICE_MEM_BASE_ADDR_ALIGN,
-    CL_DEVICE_MIN_DATA_TYPE_ALIGN_SIZE,
-    CL_DEVICE_SINGLE_FP_CONFIG,
-    CL_DEVICE_GLOBAL_MEM_CACHE_TYPE,
-    CL_DEVICE_GLOBAL_MEM_CACHELINE_SIZE,
+    CL_DEVICE_PROFILING_TIMER_RESOLUTION
+};
+
+// cl_ulong valued cl_device_info parameters
+static const cl_device_info cl_ulong_params[] = {
+    CL_DEVICE_MAX_MEM_ALLOC_SIZE,
     CL_DEVICE_GLOBAL_MEM_CACHE_SIZE,
     CL_DEVICE_GLOBAL_MEM_SIZE,
     CL_DEVICE_MAX_CONSTANT_BUFFER_SIZE,
-    CL_DEVICE_MAX_CONSTANT_ARGS,
-    CL_DEVICE_LOCAL_MEM_TYPE,
-    CL_DEVICE_LOCAL_MEM_SIZE,
+    CL_DEVICE_LOCAL_MEM_SIZE
+};
+
+// cl_bool valued cl_device_info parameters
+static const cl_device_info cl_bool_params[] = {
+    CL_DEVICE_IMAGE_SUPPORT,
     CL_DEVICE_ERROR_CORRECTION_SUPPORT,
-    CL_DEVICE_PROFILING_TIMER_RESOLUTION,
     CL_DEVICE_ENDIAN_LITTLE,
     CL_DEVICE_AVAILABLE,
-    CL_DEVICE_COMPILER_AVAILABLE,
-    CL_DEVICE_EXECUTION_CAPABILITIES,
+    CL_DEVICE_COMPILER_AVAILABLE
+};
+
+// cl_device_fp_config valued cl_device_info parameters
+static const cl_device_info cl_device_fp_config_params[] = {
+    CL_DEVICE_SINGLE_FP_CONFIG
+};
+
+// cl_device_mem_cache_type valued cl_device_info parameters
+static const cl_device_info cl_device_mem_cache_type_params[] = {
+    CL_DEVICE_GLOBAL_MEM_CACHE_TYPE
+};
+
+// cl_device_local_mem_type valued cl_device_info parameters
+static const cl_device_info cl_device_local_mem_type_params[] = {
+    CL_DEVICE_LOCAL_MEM_TYPE
+};
+
+// cl_device_exec_capabilities valued cl_device_info parameters
+static const cl_device_info cl_device_exec_capabilities_params[] = {
+    CL_DEVICE_EXECUTION_CAPABILITIES
+};
+
+// cl_command_queue_properties values cl_device_info parameters
+static const cl_device_info cl_command_queue_properties_params[] = {
     CL_DEVICE_QUEUE_PROPERTIES
 };
 
 // string valued cl_device_info parameters
-static const cl_device_info stringparam[] = {
+static const cl_device_info string_params[] = {
     CL_DEVICE_NAME,
     CL_DEVICE_VENDOR,
     CL_DRIVER_VERSION,
@@ -114,30 +204,73 @@ OCLBase::insert_device(const cl_device_id device_id,
     devices.push_back(device_id);
     device_platform.push_back(platform_index); // keep track of parent platform
 
-    // only integral valued device info parameters
-    for (size_t i = 0; i < sizeof(intparam)/sizeof(cl_device_info); i++)
-    {
-        const cl_device_info key = intparam[i];
+    // only cl_device_type valued device info parameters
+    storeDeviceInfoParams<cl_device_type>(
+        device_info_cl_device_type,
+        cl_device_type_params,
+        sizeof(cl_device_type_params)/sizeof(cl_device_info),
+        device_id);
 
-        unsigned long unum;
+    // only cl_uint valued device info parameters
+    storeDeviceInfoParams<cl_uint>(
+        device_info_cl_uint,
+        cl_uint_params,
+        sizeof(cl_uint_params)/sizeof(cl_device_info),
+        device_id);
 
-        device_intinfo[key].push_back(
-            checkFail(
-                clGetDeviceInfo(device_id,
-                                key,
-                                sizeof(unum),
-                                &unum,
-                                NULL),
-                "get device info ",
-                devinfo(key))
-                ? 0
-                : unum);
-    }
+    // only size_t valued device info parameters
+    storeDeviceInfoParams<size_t>(
+        device_info_size_t,
+        size_t_params,
+        sizeof(size_t_params)/sizeof(cl_device_info),
+        device_id);
+
+    // only cl_ulong valued device info parameters
+    storeDeviceInfoParams<cl_ulong>(
+        device_info_cl_ulong,
+        cl_ulong_params,
+        sizeof(cl_ulong_params)/sizeof(cl_device_info),
+        device_id);
+
+    // only cl_bool valued device info parameters
+    storeDeviceInfoParams<cl_bool>(
+        device_info_cl_bool,
+        cl_bool_params,
+        sizeof(cl_bool_params)/sizeof(cl_device_info),
+        device_id);
+
+    // only cl_device_fp_config valued device info parameters
+    storeDeviceInfoParams<cl_device_fp_config>(
+        device_info_cl_device_fp_config,
+        cl_device_fp_config_params,
+        sizeof(cl_device_fp_config)/sizeof(cl_device_info),
+        device_id);
+
+    // only cl_device_mem_cache_type valued device info parameters
+    storeDeviceInfoParams<cl_device_mem_cache_type>(
+        device_info_cl_device_mem_cache_type,
+        cl_device_mem_cache_type_params,
+        sizeof(cl_device_mem_cache_type_params)/sizeof(cl_device_info),
+        device_id);
+
+    // only cl_device_local_mem_type valued device info parameters
+    storeDeviceInfoParams<cl_device_local_mem_type>(
+        device_info_cl_device_local_mem_type,
+        cl_device_local_mem_type_params,
+        sizeof(cl_device_local_mem_type_params)/sizeof(cl_device_info),
+        device_id);
+
+    // only cl_device_exec_capabilities valued device info parameters
+    storeDeviceInfoParams<cl_device_exec_capabilities>(
+        device_info_cl_device_exec_capabilities,
+        cl_device_exec_capabilities_params,
+        sizeof(cl_device_exec_capabilities_params)/sizeof(cl_device_info),
+        device_id);
 
     // only string valued device info parameters
-    for (size_t i = 0; i < sizeof(stringparam)/sizeof(cl_device_info); i++)
+    for (size_t i = 0; i < sizeof(string_params)/sizeof(cl_device_info); i++)
     {
-        const cl_device_info key = stringparam[i];
+        const cl_device_info key = string_params[i];
 
         char buffer[512]; // arbitrary length
 
@@ -354,7 +487,7 @@ OCLBase::deviceIndexes(const cl_device_type dtype)
 {
     vector<size_t> indexes;
 
-    const vector<cl_device_type> &dev_type = device_intinfo[CL_DEVICE_TYPE];
+    const vector<cl_device_type>& dev_type = device_info_cl_device_type[CL_DEVICE_TYPE];
 
     for (size_t i = 0; i < dev_type.size(); i++)
     {
@@ -380,37 +513,37 @@ OCLBase::gpuIndexes()
 size_t
 OCLBase::maxWorkGroupSize(const size_t device_index)
 {
-    return device_intinfo[CL_DEVICE_MAX_WORK_GROUP_SIZE][device_index];
+    return device_info_size_t[CL_DEVICE_MAX_WORK_GROUP_SIZE][device_index];
 }
 
 size_t
 OCLBase::maxComputeUnits(const size_t device_index)
 {
-    return device_intinfo[CL_DEVICE_MAX_COMPUTE_UNITS][device_index];
+    return device_info_cl_uint[CL_DEVICE_MAX_COMPUTE_UNITS][device_index];
 }
 
 size_t
 OCLBase::maxMemAlloc(const size_t device_index)
 {
-    return device_intinfo[CL_DEVICE_MAX_MEM_ALLOC_SIZE][device_index];
+    return device_info_cl_ulong[CL_DEVICE_MAX_MEM_ALLOC_SIZE][device_index];
 }
 
 size_t
 OCLBase::maxConstBuffer(const size_t device_index)
 {
-    return device_intinfo[CL_DEVICE_MAX_CONSTANT_BUFFER_SIZE][device_index];
+    return device_info_cl_ulong[CL_DEVICE_MAX_CONSTANT_BUFFER_SIZE][device_index];
 }
 
 size_t
 OCLBase::localMemory(const size_t device_index)
 {
-    return device_intinfo[CL_DEVICE_LOCAL_MEM_SIZE][device_index];
+    return device_info_cl_ulong[CL_DEVICE_LOCAL_MEM_SIZE][device_index];
 }
 
 size_t
 OCLBase::globalMemory(const size_t device_index)
 {
-    return device_intinfo[CL_DEVICE_GLOBAL_MEM_SIZE][device_index];
+    return device_info_cl_ulong[CL_DEVICE_GLOBAL_MEM_SIZE][device_index];
 }
 
 void
@@ -423,22 +556,82 @@ OCLBase::print(const size_t device_index, const char *prepend)
         << "\tqueue " << queues[device_index]
         << endl;
 
-    // only integral valued device info parameters
-    for (size_t i = 0; i < sizeof(intparam)/sizeof(cl_device_info); i++)
-    {
-        const cl_device_info key = intparam[i];
+    // only cl_device_type valued device info parameters
+    printDeviceInfoParams<cl_device_type>(
+        device_info_cl_device_type,
+        cl_device_type_params,
+        sizeof(cl_device_type_params)/sizeof(cl_device_info),
+        device_index,
+        prepend);
 
-        cout
-            << prepend << "\t"
-            << devinfo(key) << "\t"
-            << devinfovalue(key, device_intinfo[key][device_index])
-            << endl;
-    }
+    // only cl_uint valued device info parameters
+    printDeviceInfoParams<cl_uint>(
+        device_info_cl_uint,
+        cl_uint_params,
+        sizeof(cl_uint_params)/sizeof(cl_device_info),
+        device_index,
+        prepend);
+
+    // only size_t valued device info parameters
+    printDeviceInfoParams<size_t>(
+        device_info_size_t,
+        size_t_params,
+        sizeof(size_t_params)/sizeof(cl_device_info),
+        device_index,
+        prepend);
+
+    // only cl_ulong valued device info parameters
+    printDeviceInfoParams<cl_ulong>(
+        device_info_cl_ulong,
+        cl_ulong_params,
+        sizeof(cl_ulong_params)/sizeof(cl_device_info),
+        device_index,
+        prepend);
+
+    // only cl_bool valued device info parameters
+    printDeviceInfoParams<cl_bool>(
+        device_info_cl_bool,
+        cl_bool_params,
+        sizeof(cl_bool_params)/sizeof(cl_device_info),
+        device_index,
+        prepend);
+
+    // only cl_device_fp_config valued device info parameters
+    printDeviceInfoParams<cl_device_fp_config>(
+        device_info_cl_device_fp_config,
+        cl_device_fp_config_params,
+        sizeof(cl_device_fp_config_params)/sizeof(cl_device_info),
+        device_index,
+        prepend);
+
+    // only cl_device_mem_cache_type valued device info parameters
+    printDeviceInfoParams<cl_device_mem_cache_type>(
+        device_info_cl_device_mem_cache_type,
+        cl_device_mem_cache_type_params,
+        sizeof(cl_device_mem_cache_type_params)/sizeof(cl_device_info),
+        device_index,
+        prepend);
+
+    // only cl_device_local_mem_type valued device info parameters
+    printDeviceInfoParams<cl_device_local_mem_type>(
+        device_info_cl_device_local_mem_type,
+        cl_device_local_mem_type_params,
+        sizeof(cl_device_local_mem_type_params)/sizeof(cl_device_info),
+        device_index,
+        prepend);
+
+    // only cl_device_exec_capabilities valued device info parameters
+    printDeviceInfoParams<cl_device_exec_capabilities>(
+        device_info_cl_device_exec_capabilities,
+        cl_device_exec_capabilities_params,
+        sizeof(cl_device_exec_capabilities_params)/sizeof(cl_device_info),
+        device_index,
+        prepend);
 
     // only string valued device info parameters
-    for (size_t i = 0; i < sizeof(stringparam)/sizeof(cl_device_info); i++)
+    for (size_t i = 0; i < sizeof(string_params)/sizeof(cl_device_info); i++)
     {
-        const cl_device_info key = stringparam[i];
+        const cl_device_info key = string_params[i];
 
         cout
             << prepend << "\t"

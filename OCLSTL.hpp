@@ -66,8 +66,18 @@ typedef Type<cl_mem>::aligned_vector           vec_mem;
 typedef Type<cl_event>::aligned_vector         vec_event;
 typedef Type<cl_sampler>::aligned_vector       vec_sampler;
 
-// device info, just use unsigned long for the OpenCL integral/bitfield types
-typedef Type<unsigned long>::map_device_info map_devinfo_int;
+// device info integral/bitfield types
+typedef Type<cl_device_type>::map_device_info              map_devinfo_cl_device_type;
+typedef Type<cl_uint>::map_device_info                     map_devinfo_cl_uint;
+typedef Type<size_t>::map_device_info                      map_devinfo_size_t;
+typedef Type<cl_ulong>::map_device_info                    map_devinfo_cl_ulong;
+typedef Type<cl_bool>::map_device_info                     map_devinfo_cl_bool;
+typedef Type<cl_device_fp_config>::map_device_info         map_devinfo_cl_device_fp_config;
+typedef Type<cl_device_mem_cache_type>::map_device_info    map_devinfo_cl_device_mem_cache_type;
+typedef Type<cl_device_local_mem_type>::map_device_info    map_devinfo_cl_device_local_mem_type;
+typedef Type<cl_device_exec_capabilities>::map_device_info map_devinfo_cl_device_exec_capabilities;
+typedef Type<cl_command_queue_properties>::map_device_info map_devinfo_cl_command_queue_properties;
+
 typedef Type<std::string>::map_device_info   map_devinfo_string;
 
 }; // namespace

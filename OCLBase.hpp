@@ -35,8 +35,21 @@ class OCLBase
     vec_device_id      devices;           // device index -> device id
     vec_size_t         device_platform;   // device index -> platform index
     vec_vec_size_t     device_workdim;    // device index -> work item dims
-    map_devinfo_int    device_intinfo;    // info type -> dev idx -> value
-    map_devinfo_string device_stringinfo; // info type -> dev idx -> value
+
+    // info type -> device index -> value
+    map_devinfo_cl_device_type              device_info_cl_device_type;
+    map_devinfo_cl_uint                     device_info_cl_uint;
+    map_devinfo_size_t                      device_info_size_t;
+    map_devinfo_cl_ulong                    device_info_cl_ulong;
+    map_devinfo_cl_bool                     device_info_cl_bool;
+    map_devinfo_cl_device_fp_config         device_info_cl_device_fp_config;
+    map_devinfo_cl_device_mem_cache_type    device_info_cl_device_mem_cache_type;
+    map_devinfo_cl_device_local_mem_type    device_info_cl_device_local_mem_type;
+    map_devinfo_cl_device_exec_capabilities device_info_cl_device_exec_capabilities;
+
+    // info type -> device index -> value
+    map_devinfo_string                      device_stringinfo;
+
     int insert_device(const cl_device_id, const size_t);
     void init_devices();
 
