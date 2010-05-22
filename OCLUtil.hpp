@@ -58,7 +58,7 @@ template <typename X, typename Y, typename Z,
 bool checkFail(const cl_int,
                const X, const Y, const Z, const A, const B, const C);
 
-const char *devtype(const cl_device_type);
+std::string devtype(const cl_device_type);
 const char *devinfo(const cl_device_info);
 template <typename T> std::string devinfovalue(const cl_device_info, const T);
 

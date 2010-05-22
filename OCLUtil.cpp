@@ -21,18 +21,14 @@ using namespace std;
 
 #include "declare_namespace"
 
-const char*
+string
 devtype(const cl_device_type device_type)
 {
-    switch (device_type)
-    {
-        case (CL_DEVICE_TYPE_CPU) : return "CPU";
-        case (CL_DEVICE_TYPE_GPU) : return "GPU";
-        case (CL_DEVICE_TYPE_ACCELERATOR) : return "ACCELERATOR";
-        case (CL_DEVICE_TYPE_DEFAULT) : return "DEFAULT";
-        case (CL_DEVICE_TYPE_ALL) : return "ALL";
-    }
-    return "UNKNOWN"; // this should never happen
+    stringstream ss;
+    if (device_type & CL_DEVICE_TYPE_CPU) ss << "CPU, ";
+    if (device_type & CL_DEVICE_TYPE_GPU) ss << "GPU, ";
+    if (device_type & CL_DEVICE_TYPE_ACCELERATOR) ss << "ACCELERATOR, ";
+    return ss.str();
 }
 
 const char*

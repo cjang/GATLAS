@@ -77,8 +77,9 @@ public:
     cl_command_queue& getQueue(const size_t);
 
     // returns device indexes
-    std::vector<size_t> cpuIndexes();
-    std::vector<size_t> gpuIndexes();
+    std::vector<size_t> cpuIndexes(); // CPU devices
+    std::vector<size_t> gpuIndexes(); // GPU devices
+    std::vector<size_t> accIndexes(); // ACCELERATOR devices
 
     // access device parameter values
     size_t maxWorkGroupSize(const size_t device_index);

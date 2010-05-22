@@ -33,15 +33,32 @@ int main(int argc, char *argv[])
     // check that devices were found
     const vector<size_t> cpuidx = oclBase.cpuIndexes();
     const vector<size_t> gpuidx = oclBase.gpuIndexes();
-    if (cpuidx.empty() && gpuidx.empty())
+    const vector<size_t> accidx = oclBase.accIndexes();
+    if (cpuidx.empty() && gpuidx.empty() && accidx.empty())
     {
-        cerr << "no CPU or GPU devices found" << endl;
+        cerr << "no CPU, GPU or ACCELERATOR devices found" << endl;
         return -1;
     }
 
-    // prefer GPU over CPU, just take first device found
-    const size_t devidx = gpuidx.empty() ? cpuidx[0] : gpuidx[0];
-    const char* devtype = gpuidx.empty() ? "CPU" : "GPU";
+    // order preference for devices, just take first device found
+    // 1. ACCELERATOR
+    // 2. GPU
+    // 3. CPU
+    const bool isACCELERATOR = !accidx.empty();
+    const bool isGPU = !gpuidx.empty();
+    const bool isCPU = !cpuidx.empty();
+    size_t devidx;
+    const char *devtype;
+    if (isACCELERATOR) {
+        devidx = accidx[0];
+        devtype = "ACCELERATOR";
+    } else if (isGPU) {
+        devidx = gpuidx[0];
+        devtype = "GPU";
+    } else if (isCPU) {
+        devidx = cpuidx[0];
+        devtype = "CPU";
+    }
     cout << "Using " << devtype << " device " << devidx << endl;
 
     // program, kernels and memory buffers for selected device

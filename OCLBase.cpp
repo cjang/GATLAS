@@ -491,7 +491,7 @@ OCLBase::deviceIndexes(const cl_device_type dtype)
 
     for (size_t i = 0; i < dev_type.size(); i++)
     {
-        if (dtype == dev_type[i])
+        if (dtype & dev_type[i])
             indexes.push_back(i);
     }
 
@@ -508,6 +508,12 @@ vector<size_t>
 OCLBase::gpuIndexes()
 {
     return deviceIndexes(CL_DEVICE_TYPE_GPU);
+}
+
+vector<size_t>
+OCLBase::accIndexes()
+{
+    return deviceIndexes(CL_DEVICE_TYPE_ACCELERATOR);
 }
 
 size_t

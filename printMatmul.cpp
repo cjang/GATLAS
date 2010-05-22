@@ -40,6 +40,8 @@ int getDeviceIndex(OCLBase& oclBase,
         return oclBase.cpuIndexes().empty() ? -1 : oclBase.cpuIndexes()[0];
     else if ("gpu" == device || "gpu0" == device)
         return oclBase.gpuIndexes().empty() ? -1 : oclBase.gpuIndexes()[0];
+    else if ("acc" == device || "acc0" == device)
+        return oclBase.accIndexes().empty() ? -1 : oclBase.accIndexes()[0];
     else {
         if (0 == device.find("cpu")) {
             stringstream ss;
@@ -53,6 +55,12 @@ int getDeviceIndex(OCLBase& oclBase,
             size_t index = 0;
             ss >> index;
             return oclBase.gpuIndexes().empty() ? -1 : oclBase.gpuIndexes()[index];
+        } else if (0 == device.find("acc")) {
+            stringstream ss;
+            ss << device.substr(3);
+            size_t index = 0;
+            ss >> index;
+            return oclBase.accIndexes().empty() ? -1 : oclBase.accIndexes()[index];
         }
     }
     return -1;
@@ -73,10 +81,10 @@ bool parseOpts(int argc, char *argv[],
         switch (opt) {
             case ('h') :
                 cerr << "usage: " << argv[0]
-                     << " -d cpu|gpu|cpuX|gpuX -n N [-m M -k K]"
+                     << " -d cpu|gpu|acc|cpuX|gpuX|accX -n N [-m M -k K]"
                         " -g groupSize -y blockHeight -x extraParam"
                         " [-a] [-b] [-h]" << endl
-                     << "\t-d cpu or gpu device, optional X is the device number" << endl
+                     << "\t-d cpu, gpu or accelerator device, optional X is the device number" << endl
                      << "\t-m matrix dimension M" << endl
                      << "\t-n matrix dimension N" << endl
                      << "\t-k matrix dimension K" << endl
@@ -102,7 +110,7 @@ bool parseOpts(int argc, char *argv[],
     // validate matrix dimensions
     const size_t VL = KernelBaseMatmul::VECTOR_LENGTH;
     bool rc = true;
-    if (0 != device.find("cpu") && 0 != device.find("gpu")) {
+    if (0 != device.find("cpu") && 0 != device.find("gpu") && 0 != device.find("acc")) {
         cerr << "error: invalid device " << device << endl;
         rc = false;
     }
