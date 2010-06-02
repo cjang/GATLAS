@@ -112,6 +112,8 @@ protected:
     KernelBaseMatmul(const bool transposeA,
                      const bool transposeB);
 
+    virtual ~KernelBaseMatmul();
+
     virtual std::string namePrefix() const = 0;
 
 public:
@@ -197,6 +199,8 @@ protected:
     KernelMatmul(const bool transposeA,
                  const bool transposeB);
 
+    virtual ~KernelMatmul();
+
 public:
     size_t numberFlops() const;
 };
@@ -207,6 +211,8 @@ class KernelGenMatmul : public KernelBaseMatmul
 protected:
     KernelGenMatmul(const bool transposeA,
                     const bool transposeB);
+
+    virtual ~KernelGenMatmul();
 
 public:
     size_t numberFlops() const;

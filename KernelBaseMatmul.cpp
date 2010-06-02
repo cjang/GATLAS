@@ -191,6 +191,8 @@ KernelBaseMatmul::KernelBaseMatmul(const bool transposeA,
       col(func_string<size_t>("get_local_id", 0))
 { }
 
+KernelBaseMatmul::~KernelBaseMatmul() { }
+
 std::string KernelBaseMatmul::kernelName() const {
     std::stringstream ss;
     ss << namePrefix() << blockHeight() << "x" << blockWidth()
@@ -384,6 +386,8 @@ KernelMatmul::KernelMatmul(const bool transposeA,
     : KernelBaseMatmul(transposeA, transposeB)
     { }
 
+KernelMatmul::~KernelMatmul() { }
+
 size_t KernelMatmul::numberFlops() const { return dimM() * dimN() * (2 * dimK() - 1); }
 
 // base for GEMM
@@ -391,6 +395,8 @@ KernelGenMatmul::KernelGenMatmul(const bool transposeA,
                                  const bool transposeB)
     : KernelBaseMatmul(transposeA, transposeB)
     { }
+
+KernelGenMatmul::~KernelGenMatmul() { }
 
 size_t KernelGenMatmul::numberFlops() const { return 2 * dimM() * dimN() * (dimK() + 1); }
 
