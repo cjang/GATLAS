@@ -267,34 +267,61 @@ class Var : public Variable
 {
     const std::string   _identifier;
     const AddressSpace& _qualifier;
+    const bool          _inlineValue;
+    const int           _value;
 
 public:
     Var(const std::string& name,
-           const AddressSpace& q = DEFAULT)
+        const AddressSpace& q = DEFAULT)
         : _identifier(name),
-          _qualifier(q)
+          _qualifier(q),
+          _inlineValue(false),
+          _value(0)
     { }
 
     Var(const std::string& name,
-           const AddressSpace& q,
-           FunctionDeclaration& funcDecl)
+        const AddressSpace& q,
+        FunctionDeclaration& funcDecl)
         : _identifier(name),
-          _qualifier(q)
+          _qualifier(q),
+          _inlineValue(false),
+          _value(0)
     {
         funcDecl.argument(*this);
     }
 
     Var(const std::string& name,
-           FunctionDeclaration& funcDecl,
-           const AddressSpace& q = DEFAULT)
+        FunctionDeclaration& funcDecl,
+        const AddressSpace& q = DEFAULT)
         : _identifier(name),
-          _qualifier(q)
+          _qualifier(q),
+          _inlineValue(false),
+          _value(0)
     {
         funcDecl.argument(*this);
     }
 
+    Var(const std::string& name,
+        FunctionDeclaration& funcDecl,
+        const bool inlineValue,
+        const int value,
+        const AddressSpace& q = DEFAULT)
+        : _identifier(name),
+          _qualifier(q),
+          _inlineValue(inlineValue),
+          _value(value)
+    {
+        if (! inlineValue) funcDecl.argument(*this);
+    }
+
     std::string name() const {
-        return _identifier;
+        if (_inlineValue) {
+            std::stringstream ss;
+            ss << _value;
+            return ss.str();
+        } else {
+            return _identifier;
+        }
     }
 
     std::string declaredName() const {

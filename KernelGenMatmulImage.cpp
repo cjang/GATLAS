@@ -190,14 +190,9 @@ ostream& KernelGenMatmulImage::print(ostream& os) const {
     Var< scalarN* >  matC("matC", GLOBAL, kernelDecl);
     Var< image2d_t > matA("matA", READONLY, kernelDecl);
     Var< image2d_t > matB("matB", READONLY, kernelDecl);
-    Var< const int > M("M");
-    Var< const int > N("N");
-    Var< const int > K("K");
-    if (! inlineMNK()) {
-        kernelDecl.argument(M);
-        kernelDecl.argument(N);
-        kernelDecl.argument(K);
-    }
+    Var< const int > M("M", kernelDecl, inlineMNK(), dimM());
+    Var< const int > N("N", kernelDecl, inlineMNK(), dimN());
+    Var< const int > K("K", kernelDecl, inlineMNK(), dimK());
     Var< const scalar > alpha("alpha", kernelDecl);
     Var< const scalar > beta("beta", kernelDecl);
 
@@ -222,13 +217,10 @@ ostream& KernelGenMatmulImage::print(ostream& os) const {
 
     // inner product loop
     Var< int > idx("idx");
-    if (inlineMNK())
-        os << ForLoop(idx, dimK() / VECTOR_LENGTH, 1);
-    else
-        os << ForLoop(idx, K / VECTOR_LENGTH, 1);
+    os << ForLoop(idx, K / VECTOR_LENGTH, 1);
 
         // read in values of matrix A
-        for (size_t j = 0; j < blockHeight(); j++) {
+        for (size_t j = 0; j < blockHeight(); j++)
             if (transposeA())
                 os << assign(valA[j],
                              ReadImage(matA, sampler,
@@ -239,10 +231,9 @@ ostream& KernelGenMatmulImage::print(ostream& os) const {
                              ReadImage(matA, sampler,
                                        idx,
                                        blockHeight() * globalRow + j));
-        }
 
         // read in values of matrix B
-        for (size_t j = 0; j < VECTOR_LENGTH; j++) {
+        for (size_t j = 0; j < VECTOR_LENGTH; j++)
             if (transposeB())
                 os << assign(valB[j],
                              ReadImage(matB, sampler,
@@ -253,34 +244,24 @@ ostream& KernelGenMatmulImage::print(ostream& os) const {
                              ReadImage(matB, sampler,
                                        globalCol,
                                        VECTOR_LENGTH * idx + j));
-        }
 
         // inner product accumulation
         assignMAD(os, loopOrder(), accum, valA, valB);
 
     os << EndBlock();
 
-    const ConstantValue<string> outC
-        = inlineMNK()
-              ? matC + multQuads(dimN()) * globalRow + globalCol
-              : matC + multQuads(N) * globalRow + globalCol;
+    const ConstantValue<string> outC = matC + multQuads(N) * globalRow + globalCol;
 
     os << assign(*outC,
                  MADValue(CastValue<scalarN>(alpha),
                           accum[0],
                           CastValue<scalarN>(beta) * *outC));
-    for (size_t i = 1; i < blockHeight(); i++) {
-        if (inlineMNK())
-            os << assign(*(outC + i * (dimN() / VECTOR_LENGTH)),
-                         MADValue(CastValue<scalarN>(alpha),
-                                  accum[i],
-                                  CastValue<scalarN>(beta) * *(outC + i * (dimN() / VECTOR_LENGTH))));
-        else
-            os << assign(*(outC + i * (N / VECTOR_LENGTH)),
-                         MADValue(CastValue<scalarN>(alpha),
-                                  accum[i],
-                                  CastValue<scalarN>(beta) * *(outC + i * (N / VECTOR_LENGTH))));
-    }
+
+    for (size_t i = 1; i < blockHeight(); i++)
+        os << assign(*(outC + i * (N / VECTOR_LENGTH)),
+                     MADValue(CastValue<scalarN>(alpha),
+                              accum[i],
+                              CastValue<scalarN>(beta) * *(outC + i * (N / VECTOR_LENGTH))));
 
     return os << EndBlock(); // end function body
 }

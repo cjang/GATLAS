@@ -180,14 +180,9 @@ ostream& KernelMatmulImage::print(ostream& os) const {
     Var< image2d_t > matC("matC", WRITEONLY, kernelDecl);
     Var< image2d_t > matA("matA", READONLY, kernelDecl);
     Var< image2d_t > matB("matB", READONLY, kernelDecl);
-    Var< const int > M("M");
-    Var< const int > N("N");
-    Var< const int > K("K");
-    if (! inlineMNK()) {
-        kernelDecl.argument(M);
-        kernelDecl.argument(N);
-        kernelDecl.argument(K);
-    }
+    Var< const int > M("M", kernelDecl, inlineMNK(), dimM());
+    Var< const int > N("N", kernelDecl, inlineMNK(), dimN());
+    Var< const int > K("K", kernelDecl, inlineMNK(), dimK());
 
     // begin function body
     os << kernelDecl;
@@ -210,13 +205,10 @@ ostream& KernelMatmulImage::print(ostream& os) const {
 
     // inner product loop
     Var< int > idx("idx");
-    if (inlineMNK())
-        os << ForLoop(idx, dimK() / VECTOR_LENGTH, 1);
-    else
-        os << ForLoop(idx, K / VECTOR_LENGTH, 1);
+    os << ForLoop(idx, K / VECTOR_LENGTH, 1);
 
         // read in values of matrix A
-        for (size_t j = 0; j < blockHeight(); j++) {
+        for (size_t j = 0; j < blockHeight(); j++)
             if (transposeA())
                 os << assign(valA[j],
                              ReadImage(matA, sampler,
@@ -227,10 +219,9 @@ ostream& KernelMatmulImage::print(ostream& os) const {
                              ReadImage(matA, sampler,
                                        idx,
                                        blockHeight() * globalRow + j));
-        }
 
         // read in values of matrix B
-        for (size_t j = 0; j < VECTOR_LENGTH; j++) {
+        for (size_t j = 0; j < VECTOR_LENGTH; j++)
             if (transposeB())
                 os << assign(valB[j],
                              ReadImage(matB, sampler,
@@ -241,7 +232,6 @@ ostream& KernelMatmulImage::print(ostream& os) const {
                              ReadImage(matB, sampler,
                                        globalCol,
                                        VECTOR_LENGTH * idx + j));
-        }
 
         // inner product accumulation
         assignMAD(os, loopOrder(), accum, valA, valB);

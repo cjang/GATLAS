@@ -176,14 +176,9 @@ ostream& KernelMatmulBuffer::print(ostream& os) const {
     Var< const scalarN* > matB("matB", GLOBAL, kernelDecl);
     Var< scalarN* >       tmpA("tmpA", LOCAL, kernelDecl);
     Var< scalarN* >       tmpB("tmpB", LOCAL, kernelDecl);
-    Var< const int >      M("M");
-    Var< const int >      N("N");
-    Var< const int >      K("K");
-    if (! inlineMNK()) {
-        kernelDecl.argument(M);
-        kernelDecl.argument(N);
-        kernelDecl.argument(K);
-    }
+    Var< const int >      M("M", kernelDecl, inlineMNK(), dimM());
+    Var< const int >      N("N", kernelDecl, inlineMNK(), dimN());
+    Var< const int >      K("K", kernelDecl, inlineMNK(), dimK());
 
     // begin function body
     os << kernelDecl;
@@ -194,43 +189,23 @@ ostream& KernelMatmulBuffer::print(ostream& os) const {
 
     // pointer to matA
     Var< const scalarN* > ptrMatA("ptrMatA", GLOBAL);
-    if (inlineMNK()) {
-        if (transposeA())
-            os << declare(ptrMatA, matA + globalRow
-                                        + dimM() * col);
-        else
-            os << declare(ptrMatA, matA + multQuads(dimK()) * groupSize() * blockRow
-                                        + (dimK() / VECTOR_LENGTH) * row
-                                        + col);
-    } else {
-        if (transposeA())
-            os << declare(ptrMatA, matA + globalRow
-                                        + M * col);
-        else
-            os << declare(ptrMatA, matA + multQuads(K) * groupSize() * blockRow
-                                        + (K / VECTOR_LENGTH) * row
-                                        + col);
-    }
+    if (transposeA())
+        os << declare(ptrMatA, matA + globalRow
+                                    + M * col);
+    else
+        os << declare(ptrMatA, matA + multQuads(K) * groupSize() * blockRow
+                                    + (K / VECTOR_LENGTH) * row
+                                    + col);
 
     // pointer to matB
     Var< const scalarN* > ptrMatB("ptrMatB", GLOBAL);
-    if (inlineMNK()) {
-        if (transposeB())
-            os << declare(ptrMatB, matB + dimK() * groupSize() * blockCol
-                                        + (dimK() / VECTOR_LENGTH) * row
-                                        + col);
-        else
-            os << declare(ptrMatB, matB + globalCol
-                                        + dimN() * row);
-    } else {
-        if (transposeB())
-            os << declare(ptrMatB, matB + K * groupSize() * blockCol
-                                        + (K / VECTOR_LENGTH) * row
-                                        + col);
-        else
-            os << declare(ptrMatB, matB + globalCol
-                                        + N * row);
-    }
+    if (transposeB())
+        os << declare(ptrMatB, matB + K * groupSize() * blockCol
+                                    + (K / VECTOR_LENGTH) * row
+                                    + col);
+    else
+        os << declare(ptrMatB, matB + globalCol
+                                    + N * row);
 
     // pointer to tmpA (for inner product)
     Var< const scalarN* > ptrA("ptrA", LOCAL);
@@ -250,79 +225,48 @@ ostream& KernelMatmulBuffer::print(ostream& os) const {
 
     // outer loop over blocks
     Var< int > idx("idx");
-    if (inlineMNK())
-        os << ForLoop(idx, dimK() / (groupSize() * VECTOR_LENGTH), 1);
-    else
-        os << ForLoop(idx, K / (groupSize() * VECTOR_LENGTH), 1);
+    os << ForLoop(idx, K / (groupSize() * VECTOR_LENGTH), 1);
 
         // copy block of A
         if (transposeA())
             os << assign(*(tmpA + localWidth() * VECTOR_LENGTH * row + col), *ptrMatA);
         else
             os << assign(*(tmpA + localWidth() * row + col), *ptrMatA);
-        for (size_t i = 1; i < blockHeight(); i++) {
-            if (inlineMNK()) {
-                if (transposeA())
-                    os << assign(*(tmpA + localWidth() * (VECTOR_LENGTH * row + i) + col),
-                                 *(ptrMatA + i * dimM() / VECTOR_LENGTH));
-                else
-                    os << assign(*(tmpA + localWidth() * (row + i * groupSize()) + col),
-                                 *(ptrMatA + i * groupSize() * dimK() / VECTOR_LENGTH));
-            } else {
-                if (transposeA())
-                    os << assign(*(tmpA + localWidth() * (VECTOR_LENGTH * row + i) + col),
-                                 *(ptrMatA + i * M / VECTOR_LENGTH));
-                else
-                    os << assign(*(tmpA + localWidth() * (row + i * groupSize()) + col),
-                                 *(ptrMatA + i * groupSize() * K / VECTOR_LENGTH));
-            }
-        }
+        for (size_t i = 1; i < blockHeight(); i++)
+            if (transposeA())
+                os << assign(*(tmpA + localWidth() * (VECTOR_LENGTH * row + i) + col),
+                             *(ptrMatA + i * M / VECTOR_LENGTH));
+            else
+                os << assign(*(tmpA + localWidth() * (row + i * groupSize()) + col),
+                             *(ptrMatA + i * groupSize() * K / VECTOR_LENGTH));
 
         // copy block of B
         if (transposeB())
             os << assign(*(tmpB + localWidth() * row + col), *ptrMatB);
         else
             os << assign(*(tmpB + localWidth() * VECTOR_LENGTH * col + row), *ptrMatB);
-        for (size_t i = 1; i < VECTOR_LENGTH; i++) {
-            if (inlineMNK()) {
-                if (transposeB())
-                    os << assign(*(tmpB + localWidth() * (row + i * groupSize()) + col),
-                                 *(ptrMatB + i * groupSize() * dimK() / VECTOR_LENGTH));
-                else
-                    os << assign(*(tmpB + localWidth() * (VECTOR_LENGTH * col + i) + row),
-                                 *(ptrMatB + i * dimN() / VECTOR_LENGTH));
-            } else {
-                if (transposeB())
-                    os << assign(*(tmpB + localWidth() * (row + i * groupSize()) + col),
-                                 *(ptrMatB + i * groupSize() * K / VECTOR_LENGTH));
-                else
-                    os << assign(*(tmpB + localWidth() * (VECTOR_LENGTH * col + i) + row),
-                                 *(ptrMatB + i * N / VECTOR_LENGTH));
-            }
-        }
+        for (size_t i = 1; i < VECTOR_LENGTH; i++)
+            if (transposeB())
+                os << assign(*(tmpB + localWidth() * (row + i * groupSize()) + col),
+                             *(ptrMatB + i * groupSize() * K / VECTOR_LENGTH));
+            else
+                os << assign(*(tmpB + localWidth() * (VECTOR_LENGTH * col + i) + row),
+                             *(ptrMatB + i * N / VECTOR_LENGTH));
 
         // barrier
         os << LocalBarrier();
 
         // next block for A
-        if (transposeA()) {
-            if (inlineMNK())
-                os << increment(ptrMatA, dimM() * groupSize());
-            else
-                os << increment(ptrMatA, M * groupSize());
-        } else {
+        if (transposeA())
+            os << increment(ptrMatA, M * groupSize());
+        else
             os << increment(ptrMatA, groupSize());
-        }
 
         // next block for B
-        if (transposeB()) {
+        if (transposeB())
             os << increment(ptrMatB, groupSize());
-        } else {
-            if (inlineMNK())
-                os << increment(ptrMatB, dimN() * groupSize());
-            else
-                os << increment(ptrMatB, N * groupSize());
-        }
+        else
+            os << increment(ptrMatB, N * groupSize());
 
         // for inner product
         os << assign(ptrA, tmpA + localWidth() * blockHeight() * row);
@@ -334,17 +278,15 @@ ostream& KernelMatmulBuffer::print(ostream& os) const {
 
             // read in values of tmpA
             os << assign(valA[0], *ptrA);
-            for (size_t j = 1; j < blockHeight(); j++) {
+            for (size_t j = 1; j < blockHeight(); j++)
                 os << assign(valA[j], *(ptrA + j * localWidth()));
-            }
 
             os << increment(ptrA, 1);
 
             // read in values of tmpB
             os << assign(valB[0], *ptrB);
-            for (size_t j = 1; j < VECTOR_LENGTH; j++) {
+            for (size_t j = 1; j < VECTOR_LENGTH; j++)
                 os << assign(valB[j], *(ptrB + j * localWidth()));
-            }
 
             os << increment(ptrB, 1);
 
@@ -355,18 +297,12 @@ ostream& KernelMatmulBuffer::print(ostream& os) const {
 
     os << EndBlock();
 
-    const ConstantValue<string> outC
-        = inlineMNK()
-              ? matC + multQuads(dimN()) * globalRow + globalCol
-              : matC + multQuads(N) * globalRow + globalCol;
+    const ConstantValue<string> outC = matC + multQuads(N) * globalRow + globalCol;
 
     os << assign(*outC, accum[0]);
-    for (size_t i = 1; i < blockHeight(); i++) {
-        if (inlineMNK())
-            os << assign(*(outC + i * (dimN() / VECTOR_LENGTH)), accum[i]);
-        else
-            os << assign(*(outC + i * (N / VECTOR_LENGTH)), accum[i]);
-    }
+
+    for (size_t i = 1; i < blockHeight(); i++)
+        os << assign(*(outC + i * (N / VECTOR_LENGTH)), accum[i]);
 
     return os << EndBlock(); // end function body
 }
