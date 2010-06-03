@@ -33,12 +33,14 @@ class KernelMatmulImage : public KernelMatmul
     bool _paranoidCheck;
     scalar *_paranoidC;
 
+    static const size_t NUMBER_EXTRA_PARAM = 2  // matrix dimensions inline or passed as kernel arguments
+                                           * 2  // global or group/local ID for write image output
+                                           * 6; // inner product loop order
+
     // write image output using global or group/local ID
     bool useGlobalID() const;
 
 protected:
-    size_t numberExtraParam() const;
-
     std::string namePrefix() const;
 
 public:

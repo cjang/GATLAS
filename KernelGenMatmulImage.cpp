@@ -27,16 +27,11 @@ bool KernelGenMatmulImage::_inlineMNK(const size_t extraParam) const { return ex
 // inner product accumulation loop order, 3! permutations of (j,k,l)
 size_t KernelGenMatmulImage::_loopOrder(const size_t extraParam) const { return extraParam % 6; }
 
-size_t KernelGenMatmulImage::numberExtraParam() const {
-    return 2   // matrix dimensions inlined or passed as kernel arguments
-         * 6;  // inner product loop order
-}
-
 string KernelGenMatmulImage::namePrefix() const { return "KernelGenMatmulImage"; }
 
 KernelGenMatmulImage::KernelGenMatmulImage(const bool transposeA,
                                            const bool transposeB)
-    : KernelGenMatmul(transposeA, transposeB),
+    : KernelGenMatmul(transposeA, transposeB, NUMBER_EXTRA_PARAM),
       _handleA(-1),
       _handleB(-1),
       _handleC(-1),

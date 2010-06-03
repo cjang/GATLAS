@@ -33,10 +33,10 @@ class KernelMatmulBuffer : public KernelMatmul
     bool _paranoidCheck;
     scalar *_paranoidC;
 
-protected:
-    // extra configuration parameters
-    size_t numberExtraParam() const;
+    static const size_t NUMBER_EXTRA_PARAM = 2  // matrix dimensions inline or passed as kernel arguments
+                                           * 6; // inner product loop order
 
+protected:
     std::string namePrefix() const;
 
 public:

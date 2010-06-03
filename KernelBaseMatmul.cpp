@@ -17,78 +17,98 @@
 
 #include "KernelBaseMatmul.hpp"
 
+using namespace std;
+
 #include "declare_namespace"
 
-void KernelBaseMatmul::setUseAttrAutoVec(const bool value) {
-    _useAttrAutoVec = value;
+////////////////////////////////////////
+// MatmulMatrixDimensions
+
+MatmulMatrixDimensions::MatmulMatrixDimensions()
+    : _dimM(0), _dimN(0), _dimK(0), _mnkChanged(false)
+{ }
+
+void MatmulMatrixDimensions::setMNK(const size_t M, const size_t N, const size_t K) {
+    _mnkChanged = (M != _dimM) || (N != _dimN) || (K != _dimK);
+    _dimM = M;
+    _dimN = N;
+    _dimK = K;
 }
 
-bool KernelBaseMatmul::getUseAttrAutoVec() const {
-    return _useAttrAutoVec;
+bool MatmulMatrixDimensions::mnkChanged() const { return _mnkChanged; }
+
+size_t MatmulMatrixDimensions::dimM() const { return _dimM; }
+size_t MatmulMatrixDimensions::dimN() const { return _dimN; }
+size_t MatmulMatrixDimensions::dimK() const { return _dimK; }
+
+////////////////////////////////////////
+// MatmulDataLayout
+
+MatmulDataLayout::MatmulDataLayout(const bool A, const bool B)
+    : _transposeA(A), _transposeB(B)
+{ }
+
+bool MatmulDataLayout::transposeA() const { return _transposeA; }
+bool MatmulDataLayout::transposeB() const { return _transposeB; }
+
+////////////////////////////////////////
+// MatmulWorkGroup
+
+MatmulWorkGroup::MatmulWorkGroup()
+    : _dimWidth(0), _dimHeight(0),
+      globalRow(func_string<size_t>("get_global_id", 1)),
+      globalCol(func_string<size_t>("get_global_id", 0)),
+      blockRow(func_string<size_t>("get_group_id", 1)),
+      blockCol(func_string<size_t>("get_group_id", 0)),
+      row(func_string<size_t>("get_local_id", 1)),
+      col(func_string<size_t>("get_local_id", 0))
+{ }
+
+void MatmulWorkGroup::setWorkGroup(const size_t width, const size_t height) {
+    _dimWidth = width;
+    _dimHeight = height;
 }
 
-size_t KernelBaseMatmul::dimM() const { return _dimM; }
-size_t KernelBaseMatmul::dimN() const { return _dimN; }
-size_t KernelBaseMatmul::dimK() const { return _dimK; }
-size_t KernelBaseMatmul::groupSize() const { return _groupSize; }
-size_t KernelBaseMatmul::blockHeight() const { return _blockHeight; }
-size_t KernelBaseMatmul::extraParam() const { return _extraParam; }
-
-bool KernelBaseMatmul::mnkChanged() const { return _mnkChanged; }
-
-bool KernelBaseMatmul::transposeA() const { return _transposeA; }
-bool KernelBaseMatmul::transposeB() const { return _transposeB; }
-
-bool KernelBaseMatmul::validExtraParam() const {
-    bool isValid = true;
-    if (-1 != _predicateInlineMNK) {
-        const bool predicateVal = 1 == _predicateInlineMNK;
-        if (inlineMNK() != predicateVal) isValid = false;
-    }
-    if (-1 != _predicateLoopOrder) {
-        const size_t predicateVal = _predicateLoopOrder;
-        if (loopOrder() != predicateVal) isValid = false;
-    }
-    return isValid;
+void MatmulWorkGroup::setWorkGroup(const size_t sz) {
+    setWorkGroup(sz, sz);
 }
 
-void KernelBaseMatmul::setInlineMNK(const bool value) {
-    _predicateInlineMNK = value;
+size_t MatmulWorkGroup::groupWidth() const { return _dimWidth; }
+size_t MatmulWorkGroup::groupHeight() const { return _dimHeight; }
+size_t MatmulWorkGroup::groupSize() const {
+    return (_dimWidth == _dimHeight) ? _dimWidth : 0;
 }
 
-void KernelBaseMatmul::setLoopOrder(const size_t value) {
-    _predicateLoopOrder = value;
-}
+size_t MatmulWorkGroup::localWidth() const { return groupWidth() + LOCALMEM_PAD; }
+size_t MatmulWorkGroup::localHeight() const { return groupHeight() + LOCALMEM_PAD; }
+size_t MatmulWorkGroup::localSize() const { return groupSize() + LOCALMEM_PAD; }
 
-void KernelBaseMatmul::clearInlineMNK() {
-    _predicateInlineMNK = -1;
-}
+////////////////////////////////////////
+// MatmulQuadBlocking
 
-void KernelBaseMatmul::clearLoopOrder() {
-    _predicateLoopOrder = -1;
-}
+MatmulQuadBlocking::MatmulQuadBlocking()
+    : _blockWidth(VECTOR_LENGTH), _blockHeight(0)
+{ }
 
-// for memory buffer kernels
-size_t KernelBaseMatmul::localWidth() const {
-    // add one to width to avoid local memory bank conflicts
-    const size_t LOCALMEM_PAD = 1;
-    return groupSize() + LOCALMEM_PAD;
-}
+void MatmulQuadBlocking::setQuadBlocking(const size_t height) { _blockHeight = height; }
 
-size_t KernelBaseMatmul::wholeQuads() const { return blockHeight() / VECTOR_LENGTH; }
-size_t KernelBaseMatmul::fractQuads() const { return blockHeight() % VECTOR_LENGTH; }
+size_t MatmulQuadBlocking::blockWidth() const { return _blockWidth; }
+size_t MatmulQuadBlocking::blockHeight() const { return _blockHeight; }
 
-ConstantValue<std::string> KernelBaseMatmul::multQuads(const Value& valSize) const {
+size_t MatmulQuadBlocking::wholeQuads() const { return blockHeight() / VECTOR_LENGTH; }
+size_t MatmulQuadBlocking::fractQuads() const { return blockHeight() % VECTOR_LENGTH; }
+
+ConstantValue<string> MatmulQuadBlocking::multQuads(const Value& valSize) const {
     switch (fractQuads()) {
         case (0) : return wholeQuads() * valSize;
         case (1) : return (wholeQuads() * valSize + valSize / VECTOR_LENGTH);
         case (2) : return (wholeQuads() * valSize + valSize / 2);
         case (3) : return (wholeQuads() * valSize + 3 * valSize / VECTOR_LENGTH);
     }
-    return ConstantValue<std::string>(""); // should never happen
+    return ConstantValue<string>(""); // should never happen
 }
 
-size_t KernelBaseMatmul::multQuads(const size_t valSize) const {
+size_t MatmulQuadBlocking::multQuads(const size_t valSize) const {
     switch (fractQuads()) {
         case (0) : return wholeQuads() * valSize;
         case (1) : return (wholeQuads() * valSize + valSize / VECTOR_LENGTH);
@@ -98,22 +118,37 @@ size_t KernelBaseMatmul::multQuads(const size_t valSize) const {
     return 0; // should never happen
 }
 
+////////////////////////////////////////
+// MatmulExtraParameter
+
+MatmulExtraParameter::MatmulExtraParameter(const size_t numExtraParam)
+    : _extraParam(0), _numExtraParam(numExtraParam)
+{ }
+
+void MatmulExtraParameter::setExtraParameter(const size_t value) { _extraParam = value; }
+
+size_t MatmulExtraParameter::extraParam() const { return _extraParam; }
+size_t MatmulExtraParameter::numExtraParam() const { return _numExtraParam; }
+
+////////////////////////////////////////
+// KernelBaseMatmul
+
 // inner product accumulation
-std::string KernelBaseMatmul::assignMAD(const Vector< scalarN >& accum,
-                                        const Vector< scalarN >& valA,
-                                        const Vector< scalarN >& valB,
-                                        const size_t j,           // output row
-                                        const size_t k,           // output vector element component
-                                        const size_t l) const {   // inner product component
-    if (_transposeA) {
-        if (_transposeB)
+string KernelBaseMatmul::assignMAD(const Vector< scalarN >& accum,
+                                   const Vector< scalarN >& valA,
+                                   const Vector< scalarN >& valB,
+                                   const size_t j,           // output row
+                                   const size_t k,           // output vector element component
+                                   const size_t l) const {   // inner product component
+    if (transposeA()) {
+        if (transposeB())
             // At Bt
             return assign(accum[j][k], MADValue(valA[l][j], valB[k][l], accum[j][k]));
         else
             // At B
             return assign(accum[j][k], MADValue(valA[l][j], valB[l][k], accum[j][k]));
     } else {
-        if (_transposeB)
+        if (transposeB())
             // A Bt
             return assign(accum[j][k], MADValue(valA[j][l], valB[k][l], accum[j][k]));
         else
@@ -123,11 +158,11 @@ std::string KernelBaseMatmul::assignMAD(const Vector< scalarN >& accum,
 }
 
 // inner product loop reordering
-std::ostream& KernelBaseMatmul::assignMAD(std::ostream& os,
-                                          const size_t loopOrder,
-                                          const Vector< scalarN >& accum,
-                                          const Vector< scalarN >& valA,
-                                          const Vector< scalarN >& valB) const {
+ostream& KernelBaseMatmul::assignMAD(ostream& os,
+                                     const size_t loopOrder,
+                                     const Vector< scalarN >& accum,
+                                     const Vector< scalarN >& valA,
+                                     const Vector< scalarN >& valB) const {
     switch (loopOrder) {
         case (0) : // (j, k, l)
             for (size_t j = 0; j < blockHeight(); j++) // vector element
@@ -169,26 +204,54 @@ std::ostream& KernelBaseMatmul::assignMAD(std::ostream& os,
     return os;
 }
 
+void KernelBaseMatmul::setUseAttrAutoVec(const bool value) {
+    _useAttrAutoVec = value;
+}
+
+bool KernelBaseMatmul::getUseAttrAutoVec() const {
+    return _useAttrAutoVec;
+}
+
+bool KernelBaseMatmul::validExtraParam() const {
+    bool isValid = true;
+    if (-1 != _predicateInlineMNK) {
+        const bool predicateVal = 1 == _predicateInlineMNK;
+        if (inlineMNK() != predicateVal) isValid = false;
+    }
+    if (-1 != _predicateLoopOrder) {
+        const size_t predicateVal = _predicateLoopOrder;
+        if (loopOrder() != predicateVal) isValid = false;
+    }
+    return isValid;
+}
+
+void KernelBaseMatmul::setInlineMNK(const bool value) {
+    _predicateInlineMNK = value;
+}
+
+void KernelBaseMatmul::setLoopOrder(const size_t value) {
+    _predicateLoopOrder = value;
+}
+
+void KernelBaseMatmul::clearInlineMNK() {
+    _predicateInlineMNK = -1;
+}
+
+void KernelBaseMatmul::clearLoopOrder() {
+    _predicateLoopOrder = -1;
+}
+
 KernelBaseMatmul::KernelBaseMatmul(const bool transposeA,
-                                   const bool transposeB)
-    : _dimM(0),
-      _dimN(0),
-      _dimK(0),
-      _groupSize(0),
-      _blockHeight(0),
-      _extraParam(0),
-      _mnkChanged(false),
-      _transposeA(transposeA),
-      _transposeB(transposeB),
+                                   const bool transposeB,
+                                   const size_t numExtraParam)
+    : MatmulMatrixDimensions(),
+      MatmulDataLayout(transposeA, transposeB),
+      MatmulWorkGroup(),
+      MatmulQuadBlocking(),
+      MatmulExtraParameter(numExtraParam),
       _predicateInlineMNK(-1),
       _predicateLoopOrder(-1),
-      _useAttrAutoVec(true),
-      globalRow(func_string<size_t>("get_global_id", 1)),
-      globalCol(func_string<size_t>("get_global_id", 0)),
-      blockRow(func_string<size_t>("get_group_id", 1)),
-      blockCol(func_string<size_t>("get_group_id", 0)),
-      row(func_string<size_t>("get_local_id", 1)),
-      col(func_string<size_t>("get_local_id", 0))
+      _useAttrAutoVec(true)
 { }
 
 KernelBaseMatmul::~KernelBaseMatmul() { }
@@ -208,15 +271,15 @@ std::string KernelBaseMatmul::kernelName() const {
 
 std::vector<size_t> KernelBaseMatmul::globalWorkItems() const {
     std::vector<size_t> dims;
-    dims.push_back(_dimN / blockWidth());
-    dims.push_back(_dimM / _blockHeight);
+    dims.push_back(dimN() / blockWidth());
+    dims.push_back(dimM() / blockHeight());
     return dims;
 }
 
 std::vector<size_t> KernelBaseMatmul::localWorkItems() const {
     std::vector<size_t> dims;
-    dims.push_back(_groupSize);
-    dims.push_back(_groupSize);
+    dims.push_back(groupSize());
+    dims.push_back(groupSize());
     return dims;
 }
 
@@ -228,8 +291,6 @@ size_t KernelBaseMatmul::minGroupSize(const size_t M, const size_t N, const size
 
 size_t KernelBaseMatmul::minBlockHeight() const { return VECTOR_LENGTH; }
 size_t KernelBaseMatmul::stepBlockHeight() const { return 1; }
-
-size_t KernelBaseMatmul::blockWidth() const { return VECTOR_LENGTH; }
 
 bool KernelBaseMatmul::inlineMNK() const { return _inlineMNK(extraParam()); }
 size_t KernelBaseMatmul::loopOrder() const { return _loopOrder(extraParam()); }
@@ -266,7 +327,7 @@ bool KernelBaseMatmul::validateParams(const size_t M,
         groupSize * VECTOR_LENGTH <= K &&
 
         // extra parameter
-        extraParam < numberExtraParam() &&
+        extraParam < numExtraParam() &&
         validExtraParam();
 }
 
@@ -277,13 +338,10 @@ bool KernelBaseMatmul::setParams(const size_t M,
                                  const size_t blockHeight,
                                  const size_t extraParam) {
     if (validateParams(M, N, K, groupSize, blockHeight, extraParam)) {
-        _mnkChanged = (M != _dimM) || (N != _dimN) || (K != _dimK);
-        _dimM = M;
-        _dimN = N;
-        _dimK = K;
-        _groupSize = groupSize;
-        _blockHeight = blockHeight;
-        _extraParam  = extraParam;
+        setMNK(M, N, K);
+        setWorkGroup(groupSize);
+        setQuadBlocking(blockHeight);
+        setExtraParameter(extraParam);
         return true;
     } else {
         return false;
@@ -338,7 +396,7 @@ std::vector< std::vector<size_t> > KernelBaseMatmul::parameters(const size_t M,
         for (size_t bh = minBH; bh <= maxBH; bh += stepBlockHeight())
 
             // extra parameters
-            for (size_t xp = 0; xp < numberExtraParam(); xp++)
+            for (size_t xp = 0; xp < numExtraParam(); xp++)
 
                 if (validateParams(M, N, K, gs, bh, xp)) {
 
@@ -380,21 +438,27 @@ std::vector< std::vector<size_t> > KernelBaseMatmul::parametersAll(const size_t 
     return parameters(M, N, K, -1);
 }
 
-// base for matrix multiply
+////////////////////////////////////////
+// KernelMatmul - base for matrix multiply
+
 KernelMatmul::KernelMatmul(const bool transposeA,
-                           const bool transposeB)
-    : KernelBaseMatmul(transposeA, transposeB)
-    { }
+                           const bool transposeB,
+                           const size_t numExtraParam)
+    : KernelBaseMatmul(transposeA, transposeB, numExtraParam)
+{ }
 
 KernelMatmul::~KernelMatmul() { }
 
 size_t KernelMatmul::numberFlops() const { return dimM() * dimN() * (2 * dimK() - 1); }
 
-// base for GEMM
+////////////////////////////////////////
+// KernelGenMatmul - base for GEMM
+
 KernelGenMatmul::KernelGenMatmul(const bool transposeA,
-                                 const bool transposeB)
-    : KernelBaseMatmul(transposeA, transposeB)
-    { }
+                                 const bool transposeB,
+                                 const size_t numExtraParam)
+    : KernelBaseMatmul(transposeA, transposeB, numExtraParam)
+{ }
 
 KernelGenMatmul::~KernelGenMatmul() { }
 

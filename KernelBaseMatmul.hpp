@@ -26,20 +26,138 @@
 
 #include "declare_namespace"
 
-class KernelBaseMatmul : public KernelInterface
+////////////////////////////////////////
+// MatmulMatrixDimensions
+
+class MatmulMatrixDimensions
 {
+    // C = AB where A is MxK, B is KxN, C is MxN
     size_t _dimM;
     size_t _dimN;
     size_t _dimK;
-    size_t _groupSize;
-    size_t _blockHeight;
-    size_t _extraParam;
 
+    // indicates matrix memory must be resized
     bool _mnkChanged;
 
+public:
+    MatmulMatrixDimensions();
+
+    void setMNK(const size_t M, const size_t N, const size_t K);
+
+    bool mnkChanged() const;
+
+    size_t dimM() const;
+    size_t dimN() const;
+    size_t dimK() const;
+};
+
+////////////////////////////////////////
+// MatmulDataLayout
+
+class MatmulDataLayout
+{
     const bool _transposeA;
     const bool _transposeB;
 
+public:
+    MatmulDataLayout(const bool A, const bool B);
+
+    bool transposeA() const;
+    bool transposeB() const;
+};
+
+////////////////////////////////////////
+// MatmulWorkGroup
+
+class MatmulWorkGroup
+{
+    // work group dimensions, corresponds to warp/wavefront
+    size_t _dimWidth;
+    size_t _dimHeight;
+
+    // add one to avoid local memory bank conflicts
+    static const size_t LOCALMEM_PAD = 1;
+
+public:
+    // work item IDs
+    const ConstantValue<std::string> globalCol;
+    const ConstantValue<std::string> globalRow;
+    const ConstantValue<std::string> blockRow;
+    const ConstantValue<std::string> blockCol;
+    const ConstantValue<std::string> row;
+    const ConstantValue<std::string> col;
+
+    MatmulWorkGroup();
+
+    void setWorkGroup(const size_t width, const size_t height);
+    void setWorkGroup(const size_t sz);
+
+    size_t groupWidth() const;
+    size_t groupHeight() const;
+    size_t groupSize() const;
+
+    // for memory buffer kernels
+    size_t localWidth() const;
+    size_t localHeight() const;
+    size_t localSize() const;
+};
+
+////////////////////////////////////////
+// MatmulQuadBlocking
+
+class MatmulQuadBlocking
+{
+    size_t _blockWidth;
+    size_t _blockHeight;
+
+public:
+    // explicitly vectorized kernels
+    typedef float scalar;
+    static const size_t VECTOR_LENGTH = 4;
+    typedef VecType<scalar, VECTOR_LENGTH> scalarN;
+
+    MatmulQuadBlocking();
+
+    void setQuadBlocking(const size_t height);
+
+    size_t blockWidth() const;
+    size_t blockHeight() const;
+
+    size_t wholeQuads() const;
+    size_t fractQuads() const;
+
+    ConstantValue<std::string> multQuads(const Value& valSize) const;
+    size_t multQuads(const size_t valSize) const;
+};
+
+////////////////////////////////////////
+// MatmulExtraParameter
+
+class MatmulExtraParameter
+{
+    size_t _extraParam;
+
+    const size_t _numExtraParam;
+
+public:
+    MatmulExtraParameter(const size_t numExtraParam);
+
+    void setExtraParameter(const size_t value);
+
+    size_t extraParam() const;
+    size_t numExtraParam() const;
+};
+
+////////////////////////////////////////
+// KernelBaseMatmul
+
+class KernelBaseMatmul : public KernelInterface,
+                         protected MatmulMatrixDimensions,
+                         protected MatmulDataLayout,
+                         protected MatmulWorkGroup,
+                         protected MatmulQuadBlocking,
+                         protected MatmulExtraParameter
+{
     // optional predicate to fix MNK arguments versus inlining
     int _predicateInlineMNK;
 
@@ -50,49 +168,27 @@ class KernelBaseMatmul : public KernelInterface
     bool _useAttrAutoVec; // default value is true
 
 public:
-    // explicitly vectorized kernels
-    typedef float scalar;
-    static const size_t VECTOR_LENGTH = 4;
-    typedef VecType<scalar, VECTOR_LENGTH> scalarN;
-
     void setUseAttrAutoVec(const bool value);
 
-protected:
-    // work item IDs
-    const ConstantValue<std::string> globalCol;
-    const ConstantValue<std::string> globalRow;
-    const ConstantValue<std::string> blockRow;
-    const ConstantValue<std::string> blockCol;
-    const ConstantValue<std::string> row;
-    const ConstantValue<std::string> col;
+    using MatmulQuadBlocking::VECTOR_LENGTH;
 
-    bool getUseAttrAutoVec() const;
+    // matrix dimensions are inlined constants or passed as kernel arguments
+    virtual bool _inlineMNK(const size_t) const = 0;
+    bool inlineMNK() const;
 
-    size_t dimM() const;
-    size_t dimN() const;
-    size_t dimK() const;
+    // inner product accumulation loop order, 3! permutations of (j,k,l)
+    virtual size_t _loopOrder(const size_t extraParam) const = 0;
+    size_t loopOrder() const;
 
-    size_t groupSize() const;
-    size_t blockHeight() const;
-    size_t extraParam() const;
+    void setInlineMNK(const bool);
+    void setLoopOrder(const size_t);
+    void clearInlineMNK();
+    void clearLoopOrder();
 
-    bool mnkChanged() const;
-
-    bool transposeA() const;
-    bool transposeB() const;
-
-    // extra configuration parameters
-    virtual size_t numberExtraParam() const = 0;
     bool validExtraParam() const;
 
-    // for memory buffer kernels
-    size_t localWidth() const;
-
-    size_t wholeQuads() const;
-    size_t fractQuads() const;
-
-    ConstantValue<std::string> multQuads(const Value& valSize) const;
-    size_t multQuads(const size_t valSize) const;
+protected:
+    bool getUseAttrAutoVec() const;
 
     // inner product accumulation
     std::string assignMAD(const Vector< scalarN >& accum,
@@ -110,7 +206,8 @@ protected:
                             const Vector< scalarN >& valB) const;
 
     KernelBaseMatmul(const bool transposeA,
-                     const bool transposeB);
+                     const bool transposeB,
+                     const size_t numExtraParam);
 
     virtual ~KernelBaseMatmul();
 
@@ -136,22 +233,6 @@ public:
     size_t minBlockHeight() const;
     virtual size_t maxBlockHeight() const = 0;
     size_t stepBlockHeight() const;
-
-    // inner blocking width
-    size_t blockWidth() const;
-
-    // matrix dimensions are inlined constants or passed as kernel arguments
-    virtual bool _inlineMNK(const size_t) const = 0;
-    bool inlineMNK() const;
-
-    // inner product accumulation loop order, 3! permutations of (j,k,l)
-    virtual size_t _loopOrder(const size_t extraParam) const = 0;
-    size_t loopOrder() const;
-
-    void setInlineMNK(const bool);
-    void setLoopOrder(const size_t);
-    void clearInlineMNK();
-    void clearLoopOrder();
 
     // validate kernel parameters
     bool validateParams(const size_t M,
@@ -197,7 +278,8 @@ class KernelMatmul : public KernelBaseMatmul
 {
 protected:
     KernelMatmul(const bool transposeA,
-                 const bool transposeB);
+                 const bool transposeB,
+                 const size_t numExtraParam);
 
     virtual ~KernelMatmul();
 
@@ -210,7 +292,8 @@ class KernelGenMatmul : public KernelBaseMatmul
 {
 protected:
     KernelGenMatmul(const bool transposeA,
-                    const bool transposeB);
+                    const bool transposeB,
+                    const size_t numExtraParam);
 
     virtual ~KernelGenMatmul();
 

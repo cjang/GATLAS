@@ -30,17 +30,11 @@ bool KernelMatmulImage::useGlobalID() const { return (extraParam() % 12) < 6; }
 // inner product accumulation loop order, 3! permutations of (j,k,l)
 size_t KernelMatmulImage::_loopOrder(const size_t extraParam) const { return extraParam % 6; }
 
-size_t KernelMatmulImage::numberExtraParam() const {
-    return 2   // matrix dimensions inlined or passed as kernel arguments
-         * 2   // global or group/local ID for write image output
-         * 6;  // inner product loop order
-}
-
 string KernelMatmulImage::namePrefix() const { return "KernelMatmulImage"; }
 
 KernelMatmulImage::KernelMatmulImage(const bool transposeA,
                                      const bool transposeB)
-    : KernelMatmul(transposeA, transposeB),
+    : KernelMatmul(transposeA, transposeB, NUMBER_EXTRA_PARAM),
       _handleA(-1),
       _handleB(-1),
       _handleC(-1),
