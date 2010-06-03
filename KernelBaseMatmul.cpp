@@ -212,35 +212,6 @@ bool KernelBaseMatmul::getUseAttrAutoVec() const {
     return _useAttrAutoVec;
 }
 
-bool KernelBaseMatmul::validExtraParam() const {
-    bool isValid = true;
-    if (-1 != _predicateInlineMNK) {
-        const bool predicateVal = 1 == _predicateInlineMNK;
-        if (inlineMNK() != predicateVal) isValid = false;
-    }
-    if (-1 != _predicateLoopOrder) {
-        const size_t predicateVal = _predicateLoopOrder;
-        if (loopOrder() != predicateVal) isValid = false;
-    }
-    return isValid;
-}
-
-void KernelBaseMatmul::setInlineMNK(const bool value) {
-    _predicateInlineMNK = value;
-}
-
-void KernelBaseMatmul::setLoopOrder(const size_t value) {
-    _predicateLoopOrder = value;
-}
-
-void KernelBaseMatmul::clearInlineMNK() {
-    _predicateInlineMNK = -1;
-}
-
-void KernelBaseMatmul::clearLoopOrder() {
-    _predicateLoopOrder = -1;
-}
-
 KernelBaseMatmul::KernelBaseMatmul(const bool transposeA,
                                    const bool transposeB,
                                    const size_t numExtraParam)
@@ -249,8 +220,6 @@ KernelBaseMatmul::KernelBaseMatmul(const bool transposeA,
       MatmulWorkGroup(),
       MatmulQuadBlocking(),
       MatmulExtraParameter(numExtraParam),
-      _predicateInlineMNK(-1),
-      _predicateLoopOrder(-1),
       _useAttrAutoVec(true)
 { }
 
@@ -327,8 +296,7 @@ bool KernelBaseMatmul::validateParams(const size_t M,
         groupSize * VECTOR_LENGTH <= K &&
 
         // extra parameter
-        extraParam < numExtraParam() &&
-        validExtraParam();
+        extraParam < numExtraParam();
 }
 
 bool KernelBaseMatmul::setParams(const size_t M,

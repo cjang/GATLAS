@@ -158,12 +158,6 @@ class KernelBaseMatmul : public KernelInterface,
                          protected MatmulQuadBlocking,
                          protected MatmulExtraParameter
 {
-    // optional predicate to fix MNK arguments versus inlining
-    int _predicateInlineMNK;
-
-    // optional predicate to fix inner product accumulation loop order
-    int _predicateLoopOrder;
-
     // kernel vector attribute hint is not supported on all platforms
     bool _useAttrAutoVec; // default value is true
 
@@ -179,13 +173,6 @@ public:
     // inner product accumulation loop order, 3! permutations of (j,k,l)
     virtual size_t _loopOrder(const size_t extraParam) const = 0;
     size_t loopOrder() const;
-
-    void setInlineMNK(const bool);
-    void setLoopOrder(const size_t);
-    void clearInlineMNK();
-    void clearLoopOrder();
-
-    bool validExtraParam() const;
 
 protected:
     bool getUseAttrAutoVec() const;
