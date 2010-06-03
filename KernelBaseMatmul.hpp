@@ -100,6 +100,12 @@ public:
     size_t localWidth() const;
     size_t localHeight() const;
     size_t localSize() const;
+
+    // skip small work group sizes as they are always slow
+    virtual size_t minGroupSize(const size_t M, const size_t N, const size_t K) const;
+
+    // maximum work group size varies with matrix dimensions (to avoid kernel hangs)
+    virtual size_t maxGroupSize(const size_t M, const size_t N, const size_t K) const = 0;
 };
 
 ////////////////////////////////////////
@@ -128,6 +134,11 @@ public:
 
     ConstantValue<std::string> multQuads(const Value& valSize) const;
     size_t multQuads(const size_t valSize) const;
+
+    // inner blocking depends on the kernel
+    size_t minBlockHeight() const;
+    virtual size_t maxBlockHeight() const = 0;
+    size_t stepBlockHeight() const;
 };
 
 ////////////////////////////////////////
@@ -146,6 +157,29 @@ public:
 
     size_t extraParam() const;
     size_t numExtraParam() const;
+
+    // matrix dimensions are inlined constants or passed as kernel arguments
+    virtual bool _inlineMNK(const size_t) const = 0;
+    bool inlineMNK() const;
+
+    // inner product accumulation loop order, 3! permutations of (j,k,l)
+    virtual size_t _loopOrder(const size_t extraParam) const = 0;
+    size_t loopOrder() const;
+};
+
+////////////////////////////////////////
+// MatmulAttrAutoVec
+
+class MatmulAttrAutoVec
+{
+    // kernel vector attribute hint is not supported on all platforms
+    bool _useAttrAutoVec; // default value is true
+
+public:
+    MatmulAttrAutoVec();
+
+    void setUseAttrAutoVec(const bool value);
+    bool getUseAttrAutoVec() const;
 };
 
 ////////////////////////////////////////
@@ -156,27 +190,18 @@ class KernelBaseMatmul : public KernelInterface,
                          protected MatmulDataLayout,
                          protected MatmulWorkGroup,
                          protected MatmulQuadBlocking,
-                         protected MatmulExtraParameter
+                         protected MatmulExtraParameter,
+                         protected MatmulAttrAutoVec
 {
-    // kernel vector attribute hint is not supported on all platforms
-    bool _useAttrAutoVec; // default value is true
-
 public:
-    void setUseAttrAutoVec(const bool value);
-
     using MatmulQuadBlocking::VECTOR_LENGTH;
 
-    // matrix dimensions are inlined constants or passed as kernel arguments
-    virtual bool _inlineMNK(const size_t) const = 0;
-    bool inlineMNK() const;
+    using MatmulAttrAutoVec::setUseAttrAutoVec;
 
-    // inner product accumulation loop order, 3! permutations of (j,k,l)
-    virtual size_t _loopOrder(const size_t extraParam) const = 0;
-    size_t loopOrder() const;
+    using MatmulExtraParameter::_inlineMNK;
+    using MatmulExtraParameter::_loopOrder;
 
 protected:
-    bool getUseAttrAutoVec() const;
-
     // inner product accumulation
     std::string assignMAD(const Vector< scalarN >& accum,
                           const Vector< scalarN >& valA,
@@ -209,17 +234,6 @@ public:
     std::vector<size_t> globalWorkItems() const;
 
     std::vector<size_t> localWorkItems() const;
-
-    // skip small work group sizes as they are always slow
-    virtual size_t minGroupSize(const size_t M, const size_t N, const size_t K) const;
-
-    // maximum work group size varies with matrix dimensions (to avoid kernel hangs)
-    virtual size_t maxGroupSize(const size_t M, const size_t N, const size_t K) const = 0;
-
-    // inner blocking depends on the kernel
-    size_t minBlockHeight() const;
-    virtual size_t maxBlockHeight() const = 0;
-    size_t stepBlockHeight() const;
 
     // validate kernel parameters
     bool validateParams(const size_t M,

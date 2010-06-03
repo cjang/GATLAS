@@ -83,6 +83,12 @@ size_t MatmulWorkGroup::localWidth() const { return groupWidth() + LOCALMEM_PAD;
 size_t MatmulWorkGroup::localHeight() const { return groupHeight() + LOCALMEM_PAD; }
 size_t MatmulWorkGroup::localSize() const { return groupSize() + LOCALMEM_PAD; }
 
+// skip small work group sizes as they are always slow
+size_t MatmulWorkGroup::minGroupSize(const size_t M, const size_t N, const size_t K) const {
+    // 8 * 8 = 64 = wavefront size on HD 5870
+    return 8;
+}
+
 ////////////////////////////////////////
 // MatmulQuadBlocking
 
@@ -118,6 +124,9 @@ size_t MatmulQuadBlocking::multQuads(const size_t valSize) const {
     return 0; // should never happen
 }
 
+size_t MatmulQuadBlocking::minBlockHeight() const { return VECTOR_LENGTH; }
+size_t MatmulQuadBlocking::stepBlockHeight() const { return 1; }
+
 ////////////////////////////////////////
 // MatmulExtraParameter
 
@@ -129,6 +138,19 @@ void MatmulExtraParameter::setExtraParameter(const size_t value) { _extraParam =
 
 size_t MatmulExtraParameter::extraParam() const { return _extraParam; }
 size_t MatmulExtraParameter::numExtraParam() const { return _numExtraParam; }
+
+bool MatmulExtraParameter::inlineMNK() const { return _inlineMNK(extraParam()); }
+size_t MatmulExtraParameter::loopOrder() const { return _loopOrder(extraParam()); }
+
+////////////////////////////////////////
+// MatmulAttrAutoVec
+
+MatmulAttrAutoVec::MatmulAttrAutoVec()
+    : _useAttrAutoVec(true)
+{ }
+
+void MatmulAttrAutoVec::setUseAttrAutoVec(const bool value) { _useAttrAutoVec = value; }
+bool MatmulAttrAutoVec::getUseAttrAutoVec() const { return _useAttrAutoVec; }
 
 ////////////////////////////////////////
 // KernelBaseMatmul
@@ -204,14 +226,6 @@ ostream& KernelBaseMatmul::assignMAD(ostream& os,
     return os;
 }
 
-void KernelBaseMatmul::setUseAttrAutoVec(const bool value) {
-    _useAttrAutoVec = value;
-}
-
-bool KernelBaseMatmul::getUseAttrAutoVec() const {
-    return _useAttrAutoVec;
-}
-
 KernelBaseMatmul::KernelBaseMatmul(const bool transposeA,
                                    const bool transposeB,
                                    const size_t numExtraParam)
@@ -220,7 +234,7 @@ KernelBaseMatmul::KernelBaseMatmul(const bool transposeA,
       MatmulWorkGroup(),
       MatmulQuadBlocking(),
       MatmulExtraParameter(numExtraParam),
-      _useAttrAutoVec(true)
+      MatmulAttrAutoVec()
 { }
 
 KernelBaseMatmul::~KernelBaseMatmul() { }
@@ -251,18 +265,6 @@ std::vector<size_t> KernelBaseMatmul::localWorkItems() const {
     dims.push_back(groupSize());
     return dims;
 }
-
-// skip small work group sizes as they are always slow
-size_t KernelBaseMatmul::minGroupSize(const size_t M, const size_t N, const size_t K) const {
-    // 8 * 8 = 64 = wavefront size on HD 5870
-    return 8;
-}
-
-size_t KernelBaseMatmul::minBlockHeight() const { return VECTOR_LENGTH; }
-size_t KernelBaseMatmul::stepBlockHeight() const { return 1; }
-
-bool KernelBaseMatmul::inlineMNK() const { return _inlineMNK(extraParam()); }
-size_t KernelBaseMatmul::loopOrder() const { return _loopOrder(extraParam()); }
 
 // validate kernel parameters
 bool KernelBaseMatmul::validateParams(const size_t M,
