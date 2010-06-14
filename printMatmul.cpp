@@ -21,6 +21,7 @@
 #include <string>
 #include <unistd.h>
 
+#include "GatlasAppUtil.hpp"
 #include "GatlasBenchmark.hpp"
 #include "KernelProbeAutoVectorize.hpp"
 #include "KernelFile.hpp"
@@ -33,38 +34,6 @@ using namespace std;
 typedef float scalar;
 static const size_t VECTOR_LENGTH = 4;
 typedef VecType<scalar, VECTOR_LENGTH> scalarN;
-
-int getDeviceIndex(OCLBase& oclBase,
-                   const string& device) {
-    if ("cpu" == device || "cpu0" == device)
-        return oclBase.cpuIndexes().empty() ? -1 : oclBase.cpuIndexes()[0];
-    else if ("gpu" == device || "gpu0" == device)
-        return oclBase.gpuIndexes().empty() ? -1 : oclBase.gpuIndexes()[0];
-    else if ("acc" == device || "acc0" == device)
-        return oclBase.accIndexes().empty() ? -1 : oclBase.accIndexes()[0];
-    else {
-        if (0 == device.find("cpu")) {
-            stringstream ss;
-            ss << device.substr(3);
-            size_t index = 0;
-            ss >> index;
-            return oclBase.cpuIndexes().empty() ? -1 : oclBase.cpuIndexes()[index];
-        } else if (0 == device.find("gpu")) {
-            stringstream ss;
-            ss << device.substr(3);
-            size_t index = 0;
-            ss >> index;
-            return oclBase.gpuIndexes().empty() ? -1 : oclBase.gpuIndexes()[index];
-        } else if (0 == device.find("acc")) {
-            stringstream ss;
-            ss << device.substr(3);
-            size_t index = 0;
-            ss >> index;
-            return oclBase.accIndexes().empty() ? -1 : oclBase.accIndexes()[index];
-        }
-    }
-    return -1;
-}
 
 bool parseOpts(int argc, char *argv[],
                string& device,
@@ -108,7 +77,7 @@ bool parseOpts(int argc, char *argv[],
     }
 
     // validate matrix dimensions
-    const size_t VL = KernelBaseMatmul::VECTOR_LENGTH;
+    const size_t VL = VECTOR_LENGTH; // FIXME
     bool rc = true;
     if (0 != device.find("cpu") && 0 != device.find("gpu") && 0 != device.find("acc")) {
         cerr << "error: invalid device " << device << endl;
@@ -184,11 +153,11 @@ int main(int argc, char *argv[])
         exit(1);
 
     OCLBase oclBase;
-    const size_t device_index = getDeviceIndex(oclBase, device);
+    const size_t device_index = AppUtil::getDeviceIndex(oclBase, device);
     OCLApp oclApp(oclBase, device_index);
 
     // OpenCL parameterized kernel generator class
-    KERNEL_CLASS kernel(transposeA, transposeB);
+    KERNEL_CLASS_MACRO kernel( GEMM_MACRO );
 
     Bench(oclApp, kernel);
 
@@ -196,9 +165,10 @@ int main(int argc, char *argv[])
     // ATI    - ok
     // nVidia - ok but slow (needs scalar kernel)
     // CELL   - program build failure
-    KernelProbeAutoVectorize<scalarN> kpav;
+    KernelProbeAutoVectorize<scalar, VECTOR_LENGTH> kpav;
     Bench kpavBench(oclApp, kpav);
-    const vector<size_t> kpavArgs = kpav.parameters(true);
+    vector<size_t> kpavArgs;
+    kpavArgs.push_back(true);
     if (0 == kpavBench.run(1, kpavArgs, false, false, false)) {
         cout << "device does not support vector attribute hint" << endl;
         kernel.setUseAttrAutoVec(false);
@@ -207,7 +177,12 @@ int main(int argc, char *argv[])
     }
 
     // matrix dimensions, outer and inner blocking, extra parameters
-    if (kernel.setParams(M, N, K, groupSize, blockHeight, extraParam)) {
+    kernel.setMatrixDimensions(M, N, K);
+    kernel.setDataLayout(transposeA, transposeB, false);
+    kernel.setWorkGroup(groupSize);
+    kernel.setInnerBlocking(blockHeight, VECTOR_LENGTH);
+    kernel.setExtraParameter(extraParam);
+    if (kernel.validParams()) {
 
         // print kernel source
         cout << kernel;

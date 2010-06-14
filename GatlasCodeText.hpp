@@ -291,6 +291,18 @@ public:
     }
 
     Var(const std::string& name,
+        const AddressSpace& q,
+        FunctionDeclaration& funcDecl,
+        const bool isArg)
+        : _identifier(name),
+          _qualifier(q),
+          _inlineValue(false),
+          _value(0)
+    {
+        if (isArg) funcDecl.argument(*this);
+    }
+
+    Var(const std::string& name,
         FunctionDeclaration& funcDecl,
         const AddressSpace& q = DEFAULT)
         : _identifier(name),
@@ -299,6 +311,18 @@ public:
           _value(0)
     {
         funcDecl.argument(*this);
+    }
+
+    Var(const std::string& name,
+        FunctionDeclaration& funcDecl,
+        const bool isArg,
+        const AddressSpace& q = DEFAULT)
+        : _identifier(name),
+          _qualifier(q),
+          _inlineValue(false),
+          _value(0)
+    {
+        if (isArg) funcDecl.argument(*this);
     }
 
     Var(const std::string& name,

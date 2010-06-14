@@ -23,53 +23,39 @@
 
 #include "declare_namespace"
 
-template <typename T>
+template <typename SCALAR, size_t VECTOR_LENGTH>
 class KernelProbeAutoVectorize : public KernelInterface
 {
     int  _handle;
     bool _useAttrAutoVec;
 
 public:
-    // explicitly vectorized kernels
-    typedef float scalar;
-    static const size_t VECTOR_LENGTH = 4;
-    typedef VecType<scalar, VECTOR_LENGTH> scalarN;
-
     KernelProbeAutoVectorize() : _handle(-1), _useAttrAutoVec(true) { }
 
     std::string kernelName() const { return "KernelProbeAutoVectorize"; }
 
-    std::string desc() const {
-        return _useAttrAutoVec
-                   ? func_string("vec_type_hint", nameof<T>())
-                   : "no_hint";
-    }
-
     size_t numberFlops() const { return 0; }
 
-    std::vector<size_t> parameters(const bool useAttrAutoVec) const {
-        std::vector<size_t> args;
-        args.push_back(useAttrAutoVec ? 1 : 0);
-        return args;
+    void setParams(const std::vector<size_t>& args) {
+        _useAttrAutoVec = (1 == args[0]);
     }
 
-    bool setParams(const std::vector<size_t>& args) {
-        if (args.size() < 1) return false;
-        _useAttrAutoVec = (1 == args[0]);
-        return true;
+    std::vector<size_t> extraParamDetail() const {
+        std::vector<size_t> paramDetail;
+        paramDetail.push_back(_useAttrAutoVec);
+        return paramDetail;
     }
 
     bool setArgs(OCLApp& oclApp, const size_t kernelHandle, const bool syncInput) {
         if (-1 == _handle) {
             oclApp.releaseBuffers();
-            _handle = createBufferW<scalar, VECTOR_LENGTH>(oclApp, VECTOR_LENGTH, "outDummy", 0);
+            _handle = createBufferW<SCALAR, VECTOR_LENGTH>(oclApp, VECTOR_LENGTH, "outDummy", 0);
             if (-1 == _handle) return false; // failure
         }
-
         size_t argIndex = 0;
         return
             setArgGlobal(oclApp, kernelHandle, argIndex++, _handle, "outDummy") &&
-            setArgValue<scalar>(oclApp, kernelHandle, argIndex++, 1, "inDummy");
+            setArgValue<SCALAR>(oclApp, kernelHandle, argIndex++, 1, "inDummy");
     }
 
     bool syncOutput(OCLApp& oclApp) {
@@ -77,7 +63,7 @@ public:
     }
 
     bool checkOutput(OCLApp& oclApp, const bool printOutput) {
-        return checkBuffer<scalar>(oclApp, _handle, VECTOR_LENGTH, 1, false);
+        return checkBuffer<SCALAR>(oclApp, _handle, VECTOR_LENGTH, 1, false);
     }
 
     void paranoidCheck() { }
@@ -99,22 +85,24 @@ public:
     // prints the kernel source
     std::ostream& print(std::ostream& os) const {
 
+        pragma_extension<SCALAR>(os);
+
         // kernel function attributes
-        AutoVectorize< scalarN > attrAutoVec;
+        AutoVectorize< VecType<SCALAR, VECTOR_LENGTH> > attrAutoVec;
         FunctionDeclaration kernelDecl(kernelName());
         kernelDecl.returnType<void>();
         kernelDecl.qualify(KERNEL);
         if (_useAttrAutoVec) kernelDecl.qualify(attrAutoVec);
 
         // kernel arguments
-        Var< scalarN* > outDummy("outDummy", GLOBAL, kernelDecl);
-        Var< scalar >   inDummy("inDummy", kernelDecl);
+        Var< VecType<SCALAR, VECTOR_LENGTH>* > outDummy("outDummy", GLOBAL, kernelDecl);
+        Var< SCALAR >                          inDummy("inDummy", kernelDecl);
 
         // begin function body
         os << kernelDecl;
 
         // just one assignment so the kernel does something (even if trivial)
-        os << assign(*outDummy, CastValue<scalarN>(inDummy));
+        os << assign(*outDummy, CastValue< VecType<SCALAR, VECTOR_LENGTH> >(inDummy));
 
         return os << EndBlock(); // end function body
     }

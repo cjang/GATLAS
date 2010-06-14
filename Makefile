@@ -34,6 +34,7 @@ OCL_OBJECT_CODE = \
 	OCLAppUtil.o \
 
 GATLAS_OBJECT_CODE = \
+	GatlasAppUtil.o \
 	GatlasBenchmark.o \
 	GatlasCodeText.o \
 	GatlasFormatting.o \
@@ -42,11 +43,7 @@ GATLAS_OBJECT_CODE = \
 	GatlasType.o
 
 KERNEL_OBJECT_CODE = \
-	KernelBaseMatmul.o \
-	KernelGenMatmulBuffer.o \
-	KernelGenMatmulImage.o \
-	KernelMatmulBuffer.o \
-	KernelMatmulImage.o
+	KernelBaseMatmul.o
 
 LIB_OBJECT_CODE = \
 	$(OCL_OBJECT_CODE) \
@@ -55,6 +52,7 @@ LIB_OBJECT_CODE = \
 
 EXECUTABLES = \
 	oclInfo \
+	probeAutoVectorize \
 	pmm_buffer pgemm_buffer pmm_image pgemm_image \
 	bmm_buffer bgemm_buffer bmm_image bgemm_image
 
@@ -144,33 +142,35 @@ libgatlas.a : $(LIB_OBJECT_CODE)
 	$(RANLIB) $@
 
 
-
 # OpenCL information utility
 oclInfo : oclInfo.o libgatlas.a
 	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS)
 
+# check if OpenCL platform supports auto vectorize kernel attribute
+probeAutoVectorize : probeAutoVectorize.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS)
 
 
 # print matrix multiply
 pmm_buffer.o : printMatmul.cpp
 	rm -f KernelFile.hpp
 	ln -s KernelMatmulBuffer.hpp KernelFile.hpp
-	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS="KernelMatmulBuffer"
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer<float, 4>" -DGEMM_MACRO="false"
 
 pgemm_buffer.o : printMatmul.cpp
 	rm -f KernelFile.hpp
-	ln -s KernelGenMatmulBuffer.hpp KernelFile.hpp
-	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS="KernelGenMatmulBuffer"
+	ln -s KernelMatmulBuffer.hpp KernelFile.hpp
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer<float, 4>" -DGEMM_MACRO="true"
 
 pmm_image.o : printMatmul.cpp
 	rm -f KernelFile.hpp
 	ln -s KernelMatmulImage.hpp KernelFile.hpp
-	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS="KernelMatmulImage"
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulImage<float, 4>" -DGEMM_MACRO="false"
 
 pgemm_image.o : printMatmul.cpp
 	rm -f KernelFile.hpp
-	ln -s KernelGenMatmulImage.hpp KernelFile.hpp
-	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS="KernelGenMatmulImage"
+	ln -s KernelMatmulImage.hpp KernelFile.hpp
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulImage<float, 4>" -DGEMM_MACRO="true"
 
 pmm_buffer : pmm_buffer.o libgatlas.a
 	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS)
@@ -189,22 +189,22 @@ pgemm_image : pgemm_image.o libgatlas.a
 bmm_buffer.o : benchMatmul.cpp
 	rm -f KernelFile.hpp
 	ln -s KernelMatmulBuffer.hpp KernelFile.hpp
-	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS="KernelMatmulBuffer"
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="float" -DVECTOR_LENGTH_MACRO="4" -DGEMM_MACRO="false" -DMAX_GROUP_SIZE_MACRO="10" -DMAX_BLOCK_HEIGHT_MACRO="10"
 
 bgemm_buffer.o : benchMatmul.cpp
 	rm -f KernelFile.hpp
-	ln -s KernelGenMatmulBuffer.hpp KernelFile.hpp
-	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS="KernelGenMatmulBuffer"
+	ln -s KernelMatmulBuffer.hpp KernelFile.hpp
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="float" -DVECTOR_LENGTH_MACRO="4" -DGEMM_MACRO="true" -DMAX_GROUP_SIZE_MACRO="10" -DMAX_BLOCK_HEIGHT_MACRO="10"
 
 bmm_image.o : benchMatmul.cpp
 	rm -f KernelFile.hpp
 	ln -s KernelMatmulImage.hpp KernelFile.hpp
-	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS="KernelMatmulImage"
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulImage" -DSCALAR_MACRO="float" -DVECTOR_LENGTH_MACRO="4" -DGEMM_MACRO="false" -DMAX_GROUP_SIZE_MACRO="16" -DMAX_BLOCK_HEIGHT_MACRO="12"
 
 bgemm_image.o : benchMatmul.cpp
 	rm -f KernelFile.hpp
-	ln -s KernelGenMatmulImage.hpp KernelFile.hpp
-	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS="KernelGenMatmulImage"
+	ln -s KernelMatmulImage.hpp KernelFile.hpp
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulImage" -DSCALAR_MACRO="float" -DVECTOR_LENGTH_MACRO="4" -DGEMM_MACRO="true" -DMAX_GROUP_SIZE_MACRO="16" -DMAX_BLOCK_HEIGHT_MACRO="12"
 
 bmm_buffer : bmm_buffer.o libgatlas.a
 	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm

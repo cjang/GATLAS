@@ -47,7 +47,9 @@ Bench::Bench(OCLApp& oclApp, KernelInterface& kernel, const bool printStatus)
       _kernel(kernel),
       _kernelHandle(-1),
       _printStatus(printStatus)
-    { }
+{ }
+
+bool Bench::printStatus() const { return _printStatus; }
 
 // returns elapsed time in microseconds, 0 if error
 size_t Bench::run(const size_t numTrials,

@@ -70,14 +70,20 @@ class sampler_t { };
 // string names of vector types
 template <typename T, size_t N> std::string nameof() {
     std::stringstream ss;
-    ss << nameof<T>() << N;
+    if (1 == N)
+        ss << nameof<T>();
+    else
+        ss << nameof<T>() << N;
     return ss.str();
 }
 
 // string names of vector types suitable for casting (no const qualifier)
 template <typename T, size_t N> std::string castto() {
     std::stringstream ss;
-    ss << castto<T>() << N;
+    if (1 == N)
+        ss << castto<T>();
+    else
+        ss << castto<T>() << N;
     return ss.str();
 }
 
@@ -110,10 +116,14 @@ template <> std::string castto< const VecType< SCALAR, N > * >() { return castto
 template <> std::string castto< const VecType< SCALAR, N > * const >() { return castto< SCALAR, N >().append("*"); }
 
 #define DECL_VECTYPES_FUNCS(SCALAR) \
+DECL_VECTYPE_FUNCS(SCALAR, 1) \
 DECL_VECTYPE_FUNCS(SCALAR, 2) \
 DECL_VECTYPE_FUNCS(SCALAR, 4) \
 DECL_VECTYPE_FUNCS(SCALAR, 8) \
 DECL_VECTYPE_FUNCS(SCALAR, 16)
+
+// OpenCL pragmas required for specific scalar types
+template <typename SCALAR> std::ostream& pragma_extension(std::ostream& os);
 
 }; // namespace
 

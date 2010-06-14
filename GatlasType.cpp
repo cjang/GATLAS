@@ -52,4 +52,11 @@ DECL_VECTYPES_FUNCS(unsigned int)
 DECL_VECTYPES_FUNCS(unsigned long)
 DECL_VECTYPES_FUNCS(unsigned char)
 
+// OpenCL pragmas required for specific scalar types
+template <> std::ostream& pragma_extension<float>(std::ostream& os) { return os; }
+template <> std::ostream& pragma_extension<double>(std::ostream& os) {
+    os << "#pragma OPENCL EXTENSION cl_khr_fp64 : enable" << std::endl;
+    return os;
+}
+
 }; // namespace

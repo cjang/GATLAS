@@ -23,8 +23,14 @@
 #include "declare_namespace"
 
 // matrix multiply using memory buffers
-class KernelMatmulBuffer : public KernelMatmul
+template <typename SCALAR, size_t VECTOR_LENGTH>
+class KernelMatmulBuffer : public KernelBaseMatmul,
+                           protected MatmulParamInlineMNK,
+                           protected MatmulParamLoopOrder
 {
+    typedef SCALAR scalar;
+    typedef VecType< SCALAR, VECTOR_LENGTH > scalarN;
+
     int _handleA;
     int _handleB;
     int _handleC;
@@ -33,39 +39,291 @@ class KernelMatmulBuffer : public KernelMatmul
     bool _paranoidCheck;
     scalar *_paranoidC;
 
-    static const size_t NUMBER_EXTRA_PARAM = 2  // matrix dimensions inline or passed as kernel arguments
-                                           * 6; // inner product loop order
-
-protected:
-    std::string namePrefix() const;
-
 public:
-    KernelMatmulBuffer(const bool transposeA = false,
-                       const bool transposeB = true);
+    KernelMatmulBuffer(const bool GEMM)
+        : KernelBaseMatmul(GEMM),
+          MatmulParamInlineMNK(getExtraParameter()),
+          MatmulParamLoopOrder(getExtraParameter()),
+          _handleA(-1),
+          _handleB(-1),
+          _handleC(-1),
+          _paranoidCheck(false),
+          _paranoidC(NULL)
+    { }
 
-    ~KernelMatmulBuffer();
+    ~KernelMatmulBuffer() {
+        delete[] _paranoidC;
+    }
 
-    void paranoidCheck();
+    std::string kernelName() const {
+        return "KernelMatmulBuffer";
+    }
 
-    std::string desc() const;
+    void paranoidCheck() {
+        _paranoidCheck = true;
+        delete[] _paranoidC;
+        _paranoidC = new scalar[dimM() * dimN()];
+    }
 
-    size_t maxGroupSize(const size_t M, const size_t N, const size_t K) const;
+    bool syncOutput(OCLApp& oclApp) {
+        return syncBufferFromDevice(oclApp, _handleC);
+    }
 
-    size_t maxBlockHeight() const;
+    bool checkOutput(OCLApp& oclApp, const bool printOutput) {
+        if (_paranoidCheck) {
+            return checkBuffer<scalar>(oclApp, _handleC, dimN(), dimM(), _paranoidC, printOutput);
+        } else {
+            const scalar testValue = dimK();
+            return checkBuffer<scalar>(oclApp, _handleC, dimN(), dimM(), testValue, printOutput);
+        }
+    }
 
-    // matrix dimensions are inlined constants or passed as kernel arguments
-    bool _inlineMNK(const size_t extraParam) const;
+    bool setArgs(OCLApp& oclApp, const size_t kernelHandle, const bool syncInput) {
 
-    // inner product accumulation loop order, 3! permutations of (j,k,l)
-    size_t _loopOrder(const size_t extraParam) const;
+        // buffer allocation
+        if (-1 == _handleA || -1 == _handleB || -1 == _handleC || dimChanged()) {
+            oclApp.releaseBuffers();
+            _handleA = createBufferR<scalar, VECTOR_LENGTH>(oclApp, dimM() * dimK(), "matA", 1);
+            _handleB = createBufferR<scalar, VECTOR_LENGTH>(oclApp, dimK() * dimN(), "matB", 1);
+            _handleC = generalizedMatmul()
+                           ? createBufferRW<scalar, VECTOR_LENGTH>(oclApp, dimM() * dimN(), "matC", 0)
+                           : createBufferW<scalar, VECTOR_LENGTH>(oclApp, dimM() * dimN(), "matC", 0);
+            if (-1 == _handleA || -1 == _handleB || -1 == _handleC) return false; // failure
+        } else {
+            // matrices A and B
+            if (syncInput) {
+                if (!syncBufferToDevice(oclApp, _handleA)) return false;
+                if (!syncBufferToDevice(oclApp, _handleB)) return false;
+            }
+            // matrix C
+            if (!clearBuffer<scalar>(oclApp, _handleC)) return false;
+        }
 
-    bool syncOutput(OCLApp& oclApp);
-    bool checkOutput(OCLApp& oclApp, const bool printOutput);
+        const scalar alpha = (_paranoidCheck && generalizedMatmul()) ? posrand<scalar>() : 1;
+        const scalar beta = (_paranoidCheck && generalizedMatmul()) ? posrand<scalar>() : 1;
 
-    bool setArgs(OCLApp& oclApp, const size_t kernelHandle, const bool syncInput);
+        // paranoid check
+        if (_paranoidCheck) {
+
+            // fill A and B matrices with random values
+            if (fillrandBuffer<scalar>(oclApp, _handleA, dimM() * dimK()) &&
+                fillrandBuffer<scalar>(oclApp, _handleB, dimK() * dimN()) &&
+                (generalizedMatmul()
+                     ? fillrandBuffer<scalar>(oclApp, _handleC, dimM() * dimN())
+                     : true)) {
+
+                const scalar *ptrA = oclApp.bufferPtr<scalar>(_handleA);
+                const scalar *ptrB = oclApp.bufferPtr<scalar>(_handleB);
+                const scalar *ptrC = generalizedMatmul() ? oclApp.bufferPtr<scalar>(_handleC) : NULL;
+
+                fillconst<scalar>(_paranoidC, 0, dimM() * dimN());
+
+                // calculate C
+                for (size_t i = 0; i < dimM(); i++)
+                for (size_t j = 0; j < dimN(); j++)
+                for (size_t k = 0; k < dimK(); k++)
+                    _paranoidC[i * dimN() + j] += (transposeA()
+                                                       ? ptrA[k * dimM() + i]
+                                                       : ptrA[i * dimK() + k])
+                                                * (transposeB()
+                                                       ? ptrB[j * dimK() + k]
+                                                       : ptrB[k * dimN() + j]);
+
+                // multiply AB product by alpha and add beta times C
+                if (generalizedMatmul())
+                    for (size_t i = 0; i < dimM() * dimN(); i++)
+                        _paranoidC[i] = alpha * _paranoidC[i] + beta * ptrC[i];
+            } else {
+                std::cerr << "error: failed to fill input matrices with random values" << std::endl;
+            }
+        }
+
+        // set kernel arguments
+        const size_t numberElemsTmpA = localSize() * groupSize() * VECTOR_LENGTH * blockHeight();
+        const size_t numberElemsTmpB = localSize() * groupSize() * VECTOR_LENGTH * VECTOR_LENGTH;
+        size_t argIndex = 0;
+        bool rc =
+            setArgGlobal(oclApp, kernelHandle, argIndex++, _handleC, "matC") &&
+            setArgGlobal(oclApp, kernelHandle, argIndex++, _handleA, "matA") &&
+            setArgGlobal(oclApp, kernelHandle, argIndex++, _handleB, "matB") &&
+            setArgLocal<scalar>(oclApp, kernelHandle, argIndex++, numberElemsTmpA, "tmpA") &&
+            setArgLocal<scalar>(oclApp, kernelHandle, argIndex++, numberElemsTmpB, "tmpB");
+        if (! inlineMNK()) {
+            rc = rc &&
+            setArgValue<int>(oclApp, kernelHandle, argIndex++, dimM(), "M") &&
+            setArgValue<int>(oclApp, kernelHandle, argIndex++, dimN(), "N") &&
+            setArgValue<int>(oclApp, kernelHandle, argIndex++, dimK(), "K");
+        }
+        if (generalizedMatmul()) {
+            rc = rc &&
+            setArgValue<scalar>(oclApp, kernelHandle, argIndex++, alpha, "alpha") &&
+            setArgValue<scalar>(oclApp, kernelHandle, argIndex++, beta, "beta");
+        }
+        return rc;
+    }
 
     // prints the kernel source
-    std::ostream& print(std::ostream& os) const;
+    std::ostream& print(std::ostream& os) const {
+
+        pragma_extension<scalar>(os);
+
+        // kernel function attributes
+        AutoVectorize< scalarN > attrAutoVec;
+        FunctionDeclaration kernelDecl(kernelName());
+        kernelDecl.returnType<void>();
+        kernelDecl.qualify(KERNEL);
+        if (getUseAttrAutoVec()) kernelDecl.qualify(attrAutoVec);
+
+        // kernel arguments
+        Var< scalarN* >       matC("matC", GLOBAL, kernelDecl);
+        Var< const scalarN* > matA("matA", GLOBAL, kernelDecl);
+        Var< const scalarN* > matB("matB", GLOBAL, kernelDecl);
+        Var< scalarN* >       tmpA("tmpA", LOCAL, kernelDecl);
+        Var< scalarN* >       tmpB("tmpB", LOCAL, kernelDecl);
+        Var< const int >      M("M", kernelDecl, inlineMNK(), dimM());
+        Var< const int >      N("N", kernelDecl, inlineMNK(), dimN());
+        Var< const int >      K("K", kernelDecl, inlineMNK(), dimK());
+        Var< const scalar >   alpha("alpha", kernelDecl, generalizedMatmul());
+        Var< const scalar >   beta("beta", kernelDecl, generalizedMatmul());
+
+        // begin function body
+        os << kernelDecl;
+
+        // accumulate inner product sum
+        Vector< scalarN > accum("accum", blockHeight());
+        os << declare(accum, CastValue<scalarN>(ConstantValue<scalar>(0)));
+
+        // pointer to matA
+        Var< const scalarN* > ptrMatA("ptrMatA", GLOBAL);
+        if (transposeA())
+            os << declare(ptrMatA, matA + globalRow
+                                        + M * col);
+        else
+            os << declare(ptrMatA, matA + multHeight(K) * groupSize() * blockRow
+                                        + (K / VECTOR_LENGTH) * row
+                                        + col);
+
+        // pointer to matB
+        Var< const scalarN* > ptrMatB("ptrMatB", GLOBAL);
+        if (transposeB())
+            os << declare(ptrMatB, matB + K * groupSize() * blockCol
+                                        + (K / VECTOR_LENGTH) * row
+                                        + col);
+        else
+            os << declare(ptrMatB, matB + globalCol
+                                        + N * row);
+
+        // pointer to tmpA (for inner product)
+        Var< const scalarN* > ptrA("ptrA", LOCAL);
+        os << declare(ptrA);
+
+        // pointer to tmpB (for inner product)
+        Var< const scalarN* > ptrB("ptrB", LOCAL);
+        os << declare(ptrB);
+
+        // current values from tmpA (for inner product)
+        Vector< scalarN > valA("valA", blockHeight());
+        os << declare(valA);
+
+        // current values from tmpB (for inner product)
+        Vector< scalarN > valB("valB", VECTOR_LENGTH);
+        os << declare(valB);
+
+        // outer loop over blocks
+        Var< int > idx("idx");
+        os << ForLoop(idx, K / (groupSize() * VECTOR_LENGTH), 1);
+
+            // copy block of A
+            if (transposeA())
+                os << assign(*(tmpA + localSize() * VECTOR_LENGTH * row + col), *ptrMatA);
+            else
+                os << assign(*(tmpA + localSize() * row + col), *ptrMatA);
+            for (size_t i = 1; i < blockHeight(); i++)
+                if (transposeA())
+                    os << assign(*(tmpA + localSize() * (VECTOR_LENGTH * row + i) + col),
+                                 *(ptrMatA + i * M / VECTOR_LENGTH));
+                else
+                    os << assign(*(tmpA + localSize() * (row + i * groupSize()) + col),
+                                 *(ptrMatA + i * groupSize() * K / VECTOR_LENGTH));
+
+            // copy block of B
+            if (transposeB())
+                os << assign(*(tmpB + localSize() * row + col), *ptrMatB);
+            else
+                os << assign(*(tmpB + localSize() * VECTOR_LENGTH * col + row), *ptrMatB);
+            for (size_t i = 1; i < VECTOR_LENGTH; i++)
+                if (transposeB())
+                    os << assign(*(tmpB + localSize() * (row + i * groupSize()) + col),
+                                 *(ptrMatB + i * groupSize() * K / VECTOR_LENGTH));
+                else
+                    os << assign(*(tmpB + localSize() * (VECTOR_LENGTH * col + i) + row),
+                                 *(ptrMatB + i * N / VECTOR_LENGTH));
+
+            // barrier
+            os << LocalBarrier();
+
+            // next block for A
+            if (transposeA())
+                os << increment(ptrMatA, M * groupSize());
+            else
+                os << increment(ptrMatA, groupSize());
+
+            // next block for B
+            if (transposeB())
+                os << increment(ptrMatB, groupSize());
+            else
+                os << increment(ptrMatB, N * groupSize());
+
+            // for inner product
+            os << assign(ptrA, tmpA + localSize() * blockHeight() * row);
+            os << assign(ptrB, tmpB + localSize() * VECTOR_LENGTH * col);
+
+            // inner product accumulation
+            Var< int > jdx("jdx");
+            os << ForLoop(jdx, groupSize(), 1);
+
+                // read in values of tmpA
+                os << assign(valA[0], *ptrA);
+                for (size_t j = 1; j < blockHeight(); j++)
+                    os << assign(valA[j], *(ptrA + j * localSize()));
+
+                os << increment(ptrA, 1);
+
+                // read in values of tmpB
+                os << assign(valB[0], *ptrB);
+                for (size_t j = 1; j < VECTOR_LENGTH; j++)
+                    os << assign(valB[j], *(ptrB + j * localSize()));
+
+                os << increment(ptrB, 1);
+
+                // inner product accumulation
+                assignMAD(os, loopOrder(), accum, valA, valB);
+
+            os << EndBlock();
+
+        os << EndBlock();
+
+        const ConstantValue<std::string> outC = matC + multHeight(N) * globalRow + globalCol;
+
+        if (generalizedMatmul())
+            os << assign(*outC,
+                         MADValue(CastValue<scalarN>(alpha),
+                                  accum[0],
+                                  CastValue<scalarN>(beta) * *outC));
+        else
+            os << assign(*outC, accum[0]);
+
+        for (size_t i = 1; i < blockHeight(); i++)
+            if (generalizedMatmul())
+                os << assign(*(outC + i * (N / VECTOR_LENGTH)),
+                             MADValue(CastValue<scalarN>(alpha),
+                                      accum[i],
+                                      CastValue<scalarN>(beta) * *(outC + i * (N / VECTOR_LENGTH))));
+            else
+                os << assign(*(outC + i * (N / VECTOR_LENGTH)), accum[i]);
+
+        return os << EndBlock(); // end function body
+    }
 };
 
 }; // namespace

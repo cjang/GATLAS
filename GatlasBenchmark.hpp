@@ -37,14 +37,14 @@ struct KernelInterface
     // return the kernel name
     virtual std::string kernelName() const = 0;
 
-    // brief kernel description
-    virtual std::string desc() const = 0;
-
     // return number of flops
     virtual size_t numberFlops() const = 0;
 
     // kernel source is parameterized
-    virtual bool setParams(const std::vector<size_t>& args) = 0;
+    virtual void setParams(const std::vector<size_t>& params) = 0;
+
+    // kernel extra parameter by dimensions
+    virtual std::vector<size_t> extraParamDetail() const = 0;
 
     // allocate buffers and set kernel matrix arguments
     virtual bool setArgs(OCLApp& oclApp, const size_t kernelHandle, const bool syncInput) = 0;
@@ -80,6 +80,8 @@ class Bench
 public:
 
     Bench(OCLApp& oclApp, KernelInterface& kernel, const bool printStatus = true);
+
+    bool printStatus() const;
 
     // returns elapsed time in microseconds, 0 if error
     size_t run(const size_t numTrials,

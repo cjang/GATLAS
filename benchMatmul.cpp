@@ -24,6 +24,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include "GatlasAppUtil.hpp"
 #include "GatlasBenchmark.hpp"
 
 #include "KernelProbeAutoVectorize.hpp"
@@ -32,43 +33,6 @@
 #include "using_namespace"
 
 using namespace std;
-
-// explicitly vectorized kernels
-typedef float scalar;
-static const size_t VECTOR_LENGTH = 4;
-typedef VecType<scalar, VECTOR_LENGTH> scalarN;
-
-int getDeviceIndex(OCLBase& oclBase,
-                   const string& device) {
-    if ("cpu" == device || "cpu0" == device)
-        return oclBase.cpuIndexes().empty() ? -1 : oclBase.cpuIndexes()[0];
-    else if ("gpu" == device || "gpu0" == device)
-        return oclBase.gpuIndexes().empty() ? -1 : oclBase.gpuIndexes()[0];
-    else if ("acc" == device || "acc0" == device)
-        return oclBase.accIndexes().empty() ? -1 : oclBase.accIndexes()[0];
-    else {
-        if (0 == device.find("cpu")) {
-            stringstream ss;
-            ss << device.substr(3);
-            size_t index = 0;
-            ss >> index;
-            return oclBase.cpuIndexes().empty() ? -1 : oclBase.cpuIndexes()[index];
-        } else if (0 == device.find("gpu")) {
-            stringstream ss;
-            ss << device.substr(3);
-            size_t index = 0;
-            ss >> index;
-            return oclBase.gpuIndexes().empty() ? -1 : oclBase.gpuIndexes()[index];
-        } else if (0 == device.find("acc")) {
-            stringstream ss;
-            ss << device.substr(3);
-            size_t index = 0;
-            ss >> index;
-            return oclBase.accIndexes().empty() ? -1 : oclBase.accIndexes()[index];
-        }
-    }
-    return -1;
-}
 
 bool parseOpts(int argc, char *argv[],
                string& device,
@@ -135,7 +99,7 @@ bool parseOpts(int argc, char *argv[],
     }
 
     // minimal validation of options
-    const size_t VL = KernelBaseMatmul::VECTOR_LENGTH;
+    const size_t VL = VECTOR_LENGTH_MACRO ;
     bool rc = true;
     if (0 != device.find("cpu") && 0 != device.find("gpu") & 0 != device.find("acc")) {
         cerr << "error: invalid device " << device << endl;
@@ -196,48 +160,91 @@ bool parseOpts(int argc, char *argv[],
     return rc;
 }
 
-ostream& printParams(ostream& os, const vector<size_t>& args) {
-    for (size_t i = 0; i < args.size(); i++) {
-        os << args[i];
-        if (i != args.size() - 1) os << " ";
-    }
-}
-
-vector< vector<size_t> > getParams(const KernelBaseMatmul& kernel,
+vector< vector<size_t> > getParams(OCLApp& oclApp,
+                                   KERNEL_CLASS_MACRO < SCALAR_MACRO , VECTOR_LENGTH_MACRO > & kernel,
                                    const size_t M, const size_t N, const size_t K,
+                                   const bool transposeA, const bool transposeB,
                                    const size_t groupSize, const size_t blockHeight, const size_t extraParam,
                                    const int loopOrder)
 {
     vector< vector<size_t> > pargs;
+    vector<size_t> a;
+
+    kernel.setMatrixDimensions(M, N, K);
+    kernel.setDataLayout(transposeA, transposeB, false);
+    if (-1 != groupSize) kernel.setWorkGroup(groupSize);
+    if (-1 != blockHeight) kernel.setInnerBlocking(blockHeight, VECTOR_LENGTH_MACRO );
+    if (-1 != extraParam) kernel.setExtraParameter(extraParam);
 
     // all parameters
     if (-1 != groupSize && -1 != blockHeight && -1 != extraParam) {
-        vector<size_t> a;
-        a.push_back(M);
-        a.push_back(N);
-        a.push_back(K);
-        a.push_back(groupSize);
-        a.push_back(blockHeight);
-        a.push_back(extraParam);
-        pargs.push_back(a);
-    } else if (-1 != groupSize && -1 != blockHeight)
-        pargs = kernel.parameters(M, N, K, groupSize, blockHeight);
-    else if (-1 != groupSize)
-        pargs = kernel.parameters(M, N, K, groupSize);
-    else
-        pargs = kernel.parameters(M, N, K);
+        if (kernel.getParams(a)) pargs.push_back(a);
+    } else {
+        // extra parameter is free
+        if (-1 != groupSize && -1 != blockHeight) {
+            for (size_t xp = 0; xp < kernel.totalVariations(); xp++) {
+                kernel.setExtraParameter(xp);
+                if (kernel.getParams(a)) pargs.push_back(a);
+            }
 
-    // constrain to specified loop order and use inlined matrix dimensions for probe trials
-    if (-1 != loopOrder) {
-        vector< vector<size_t> > probeargs;
-        for (size_t i = 0; i < pargs.size(); i++) {
-            const vector<size_t>& pa = pargs[i];
-            const size_t xp = kernel.getExtraParam(pa);
-            if (loopOrder == kernel._loopOrder(xp) && kernel._inlineMNK(xp)) {
-                probeargs.push_back(pa);
+        // inner blocking and extra parameter are free
+        } else if (-1 != groupSize) {
+            for (size_t bh = VECTOR_LENGTH_MACRO ; bh < MAX_BLOCK_HEIGHT_MACRO; bh++) {
+                kernel.setInnerBlocking(bh, VECTOR_LENGTH_MACRO );
+                for (size_t xp = 0; xp < kernel.totalVariations(); xp++) {
+                    kernel.setExtraParameter(xp);
+                    if (kernel.getParams(a)) pargs.push_back(a);
+                }
+            }
+
+        // work group size, inner block and extra parameter are free
+        } else {
+            // maximum value of group size
+            const size_t maxPossibleGroupSize = sqrt(oclApp.maxWorkGroupSize());
+            const size_t maxGroupSize = MAX_GROUP_SIZE_MACRO < maxPossibleGroupSize
+                                            ? MAX_GROUP_SIZE_MACRO
+                                            : maxPossibleGroupSize;
+
+            // largest valid group size for problem dimensions
+            for (size_t wg = maxGroupSize; wg > 8; wg--) {
+                kernel.setWorkGroup(wg);
+                bool notEmpty = false;
+                for (size_t bh = VECTOR_LENGTH_MACRO ; bh < MAX_BLOCK_HEIGHT_MACRO; bh++) {
+                    kernel.setInnerBlocking(bh, VECTOR_LENGTH_MACRO );
+                    if (-1 == loopOrder) {
+                        for (size_t xp = 0; xp < kernel.totalVariations(); xp++) {
+                            kernel.setExtraParameter(xp);
+                            if (kernel.getParams(a)) {
+                                pargs.push_back(a);
+                                notEmpty = true;
+                            }
+                        }
+                    } else {
+                        kernel.setExtraParameter(0);
+                        if (kernel.getParams(a)) {
+                            pargs.push_back(a);
+                            notEmpty = true;
+                        }
+                    }
+                }
+                if (notEmpty) break;
+            }
+
+            // work group size of 64, same as wavefront on 5870
+            kernel.setWorkGroup(8);
+            for (size_t bh = VECTOR_LENGTH_MACRO ; bh < MAX_BLOCK_HEIGHT_MACRO; bh++) {
+                kernel.setInnerBlocking(bh, VECTOR_LENGTH_MACRO );
+                if (-1 == loopOrder) {
+                    for (size_t xp = 0; xp < kernel.totalVariations(); xp++) {
+                        kernel.setExtraParameter(xp);
+                        if (kernel.getParams(a)) pargs.push_back(a);
+                    }
+                } else {
+                    kernel.setExtraParameter(0);
+                    if (kernel.getParams(a)) pargs.push_back(a);
+                }
             }
         }
-        pargs = probeargs;
     }
 
     return pargs;
@@ -260,132 +267,52 @@ size_t mainLoop(KernelInterface& kernel,
 
     vector<size_t> pargsTime;
     vector<size_t> pargsFlops;
-    vector<string> pargsDesc;
     vector<double> pargsVariance;
+    vector< vector<size_t> > pargsExtraDetail;
 
     for (size_t i = 0; i < pargs.size(); i++) {
         pargsTime.push_back(0);
         pargsFlops.push_back(0);
-        pargsDesc.push_back("");
         pargsVariance.push_back(0);
+        pargsExtraDetail.push_back(vector<size_t>());
     }
 
-    bool initRun = true;
+    // paranoid check
+    if (paranoidCheck) kernel.paranoidCheck();
 
     // repeat main loop for number of trials
     for (size_t k = 0; k < numberTrials; k++) {
 
-        // main loop
-        for (size_t i = 0; i < pargs.size(); i++) {
+        const bool dummyRun = (0 == k);
 
-            const vector<size_t>& args = pargs[i];
-
-            if (pargsOk[i]) {
-
-                // dummy run to create buffers/images and flush to device
-                if (initRun) {
-                    bench.run(1, args, busTransferToDevice, busTransferFromDevice, printDebug);
-                    initRun = false;
-                    cout << endl << endl;
-
-                    // paranoid check
-                    if (paranoidCheck)
-                        kernel.paranoidCheck();
-                }
-
-                cout << "[trial " << k << "] ";
-
-                const size_t microsecs = bench.run(1, args, busTransferToDevice, busTransferFromDevice, printDebug);
-                if (0 == microsecs) {
-                    pargsOk[i] = false;
-                    continue;
-                }
-
-                goodKernelCount++;
-
-                const size_t numflops = kernel.numberFlops();
-
-                pargsTime[i] += microsecs;
-                pargsFlops[i] += numflops;
-                pargsDesc[i] = kernel.desc();
-
-                // single pass mean and variance
-                const double avg = static_cast<double>(numflops) / microsecs / 1000;
-                if (0 == k) {
-                    pargsAverage[i] = avg;
-                } else {
-                    const double delta = avg - pargsAverage[i];
-                    pargsVariance[i] += (static_cast<double>(k) / (k + 1)) * delta * delta;
-                    pargsAverage[i] += (static_cast<double>(1) / (k + 1)) * delta;
-                }
-
-                cout << microsecs << "\t";
-                printParams(cout, args);
-                cout << endl;
-            }
-        }
+        goodKernelCount = AppUtil::benchLoop(k,
+                                             kernel,
+                                             bench,
+                                             pargs,
+                                             pargsOk,
+                                             pargsTime,
+                                             pargsFlops,
+                                             pargsAverage,
+                                             pargsVariance,
+                                             pargsExtraDetail,
+                                             busTransferToDevice,
+                                             busTransferFromDevice,
+                                             dummyRun);
 
         cout << endl;
 
         // prune to top N parameter combinations
         // parameter combinations with the same time are treated together
-        if (-1 != topN) {
-
-            // sort trial times, skip any parameters with errors
-            set<size_t> trialTimes;
-            for (size_t i = 0; i < pargs.size(); i++)
-                if (pargsOk[i])
-                    trialTimes.insert(pargsTime[i]);
-
-            // only interested in topN fastest parameter combinations
-            size_t count = 0;
-            set<size_t> topTimes;
-            for (set<size_t>::const_iterator iter = trialTimes.begin();
-                 iter != trialTimes.end();
-                 iter++) {
-                if (count++ >= topN) break;
-                topTimes.insert(*iter);
-            }
-
-            // mark all parameters as bad except for the top N fastest ones
-            for (size_t i = 0; i < pargsOk.size(); i++)
-                if (pargsOk[i] && 0 == topTimes.count(pargsTime[i]))
-                    pargsOk[i] = false;
-        }
+        if (-1 != topN) AppUtil::markBench(topN, pargsOk, pargsTime);
     }
 
-    // sort accumulated trial times, skip any parameters with errors
-    map<size_t, size_t> timeToIdx;
-    for (size_t i = 0; i < pargs.size(); i++)
-        if (pargsOk[i])
-            timeToIdx[pargsTime[i]] = i;
-
-    // print results in descending order, so fastest kernels are first
-    size_t count = 0;
-    for (map<size_t, size_t>::const_iterator iter = timeToIdx.begin();
-         iter != timeToIdx.end();
-         iter++) {
-
-        const size_t accumTime = (*iter).first;
-        const size_t idx = (*iter).second;
-
-        const vector<size_t>& args = pargs[idx];
-        const string& desc = pargsDesc[idx];
-
-        // show average of GFLOPS rate for individual trials, not average over all trials
-        // the variance is of the average GFLOPS rate for individual trials
-        //const double gflops = static_cast<double>(pargsFlops[idx]) / accumTime / 1000;
-        const double gflops = pargsAverage[idx];
-        const double variance = pargsVariance[idx];
-
-        cout << "[" << count++ << "] "
-             << accumTime << " usec"
-             << "\tavg: " << gflops
-             << "\tstddev: " << sqrt(variance/numberTrials)
-             << "\t";
-        printParams(cout, args);
-        cout << "\t" << desc << endl;
-    }
+    AppUtil::printBench(numberTrials,
+                        pargs,
+                        pargsOk,
+                        pargsTime,
+                        pargsAverage,
+                        pargsVariance,
+                        pargsExtraDetail);
 
     return goodKernelCount;
 }
@@ -448,20 +375,22 @@ int main(int argc, char *argv[])
         exit(1);
 
     OCLBase oclBase;
-    const size_t device_index = getDeviceIndex(oclBase, device);
+    const size_t device_index = AppUtil::getDeviceIndex(oclBase, device);
     OCLApp oclApp(oclBase, device_index);
 
-    KERNEL_CLASS kernel(transposeA, transposeB);
+    KERNEL_CLASS_MACRO < SCALAR_MACRO , VECTOR_LENGTH_MACRO > kernel( GEMM_MACRO );
     Bench bench(oclApp, kernel);
 
     // does this device support vector attribute hint?
     // ATI    - ok
     // nVidia - ok but slow (needs scalar kernel)
     // CELL   - program build failure
-    KernelProbeAutoVectorize<scalarN> kpav;
+    KernelProbeAutoVectorize< SCALAR_MACRO , VECTOR_LENGTH_MACRO > kpav;
     Bench kpavBench(oclApp, kpav);
     vector< vector<size_t> > kpavArgs;
-    kpavArgs.push_back(kpav.parameters(true));
+    vector<size_t> a;
+    a.push_back(true);
+    kpavArgs.push_back(a);
     if (0 == mainLoop(kpav, kpavBench, kpavArgs, 1, -1, false, false, false, false)) {
         cout << "device does not support vector attribute hint" << endl;
         kernel.setUseAttrAutoVec(false);
@@ -469,8 +398,12 @@ int main(int argc, char *argv[])
         cout << "vector attribute hint ok" << endl;
     }
 
-    vector< vector<size_t> > pargs = getParams(kernel,
+    cout << endl;
+
+    vector< vector<size_t> > pargs = getParams(oclApp,
+                                               kernel,
                                                M, N, K,
+                                               transposeA, transposeB,
                                                groupSize, blockHeight, extraParam,
                                                (nestedOptimization ? 0 : -1));
 
@@ -498,27 +431,16 @@ int main(int argc, char *argv[])
     // nested optimization needs second pass
     cout << endl << "*** nested optimization second pass ***" << endl;
 
-    // sort based on average GFLOPS rate for individual trials
-    map<double, size_t> gflopsToIdx;
-    for (size_t i = 0; i < pargs.size(); i++)
-        if (pargsOk[i])
-            gflopsToIdx[pargsAverage[i]] = i;
+    // find inner and outer blocking of the fastest kernel
+    const size_t bestIndex = AppUtil::rankBench(0, pargsOk, pargsAverage);
+    kernel.setParams(pargs[bestIndex]);
+    const size_t bestGroupSize = kernel.groupSize();
+    const size_t bestBlockHeight = kernel.blockHeight();
 
-    // best inner and outer blocking
-    size_t bestGroupSize, bestBlockHeight;
-    for (map<double, size_t>::const_reverse_iterator iter = gflopsToIdx.rbegin();
-         iter != gflopsToIdx.rend();
-         iter++) {
-
-        const size_t idx = (*iter).second;
-        const vector<size_t>& args = pargs[idx];
-        bestGroupSize = kernel.getGroupSize(args);
-        bestBlockHeight = kernel.getBlockHeight(args);
-        break;
-    }
-
-    pargs = getParams(kernel,
+    pargs = getParams(oclApp,
+                      kernel,
                       M, N, K,
+                      transposeA, transposeB,
                       bestGroupSize, bestBlockHeight, extraParam,
                       -1);
 

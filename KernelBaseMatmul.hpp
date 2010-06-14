@@ -20,6 +20,7 @@
 
 #include <map>
 #include <sstream>
+#include <vector>
 #include "OCLApp.hpp"
 #include "OCLAppUtil.hpp"
 #include "GatlasBenchmark.hpp"
@@ -42,9 +43,9 @@ class MatmulMatrixDimensions
 public:
     MatmulMatrixDimensions();
 
-    void setMNK(const size_t M, const size_t N, const size_t K);
+    void setMatrixDimensions(const size_t M, const size_t N, const size_t K);
 
-    bool mnkChanged() const;
+    bool dimChanged() const;
 
     size_t dimM() const;
     size_t dimN() const;
@@ -56,14 +57,27 @@ public:
 
 class MatmulDataLayout
 {
-    const bool _transposeA;
-    const bool _transposeB;
+    // transpose  matrix data layout
+    // ---------  ------------------
+    // true       column major
+    // false      row major
+    bool _transposeA;
+    bool _transposeB;
+    bool _transposeC;
+
+    // indicates images must be reallocated
+    bool _abcChanged;
 
 public:
-    MatmulDataLayout(const bool A, const bool B);
+    MatmulDataLayout();
+
+    void setDataLayout(const bool A, const bool B, const bool C);
+
+    bool layoutChanged() const;
 
     bool transposeA() const;
     bool transposeB() const;
+    bool transposeC() const;
 };
 
 ////////////////////////////////////////
@@ -72,8 +86,8 @@ public:
 class MatmulWorkGroup
 {
     // work group dimensions, corresponds to warp/wavefront
-    size_t _dimWidth;
     size_t _dimHeight;
+    size_t _dimWidth;
 
     // add one to avoid local memory bank conflicts
     static const size_t LOCALMEM_PAD = 1;
@@ -89,82 +103,117 @@ public:
 
     MatmulWorkGroup();
 
-    void setWorkGroup(const size_t width, const size_t height);
+    void setWorkGroup(const size_t height, const size_t width);
     void setWorkGroup(const size_t sz);
 
-    size_t groupWidth() const;
     size_t groupHeight() const;
+    size_t groupWidth() const;
     size_t groupSize() const;
 
     // for memory buffer kernels
-    size_t localWidth() const;
     size_t localHeight() const;
+    size_t localWidth() const;
     size_t localSize() const;
-
-    // skip small work group sizes as they are always slow
-    virtual size_t minGroupSize(const size_t M, const size_t N, const size_t K) const;
-
-    // maximum work group size varies with matrix dimensions (to avoid kernel hangs)
-    virtual size_t maxGroupSize(const size_t M, const size_t N, const size_t K) const = 0;
 };
 
 ////////////////////////////////////////
-// MatmulQuadBlocking
+// MatmulInnerBlocking
 
-class MatmulQuadBlocking
+class MatmulInnerBlocking
 {
-    size_t _blockWidth;
     size_t _blockHeight;
+    size_t _blockWidth;
 
 public:
-    // explicitly vectorized kernels
-    typedef float scalar;
-    static const size_t VECTOR_LENGTH = 4;
-    typedef VecType<scalar, VECTOR_LENGTH> scalarN;
+    MatmulInnerBlocking();
 
-    MatmulQuadBlocking();
+    // blocking is height x width
+    void setInnerBlocking(const size_t height, const size_t width);
 
-    void setQuadBlocking(const size_t height);
-
-    size_t blockWidth() const;
     size_t blockHeight() const;
+    size_t blockWidth() const;
 
-    size_t wholeQuads() const;
-    size_t fractQuads() const;
+    size_t wholeHeight() const;
+    size_t fractHeight() const;
 
-    ConstantValue<std::string> multQuads(const Value& valSize) const;
-    size_t multQuads(const size_t valSize) const;
-
-    // inner blocking depends on the kernel
-    size_t minBlockHeight() const;
-    virtual size_t maxBlockHeight() const = 0;
-    size_t stepBlockHeight() const;
+    ConstantValue<std::string> multHeight(const Value& valSize) const;
+    size_t multHeight(const size_t valSize) const;
 };
 
 ////////////////////////////////////////
 // MatmulExtraParameter
 
+class MatmulExtraParameterObserver;
+
 class MatmulExtraParameter
 {
     size_t _extraParam;
+    size_t _totalVariations; // 0 <= _extraParam < _totalVariations
 
-    const size_t _numExtraParam;
+    std::vector<size_t> _observerParams;
+
+    std::vector<MatmulExtraParameterObserver*> _observers;
+    std::vector<size_t> _numberVariations;
 
 public:
-    MatmulExtraParameter(const size_t numExtraParam);
+    MatmulExtraParameter();
 
+    MatmulExtraParameter& getExtraParameter();
+
+    void addObserver(MatmulExtraParameterObserver* observer);
     void setExtraParameter(const size_t value);
-
+    std::vector<size_t> extraParamDetail() const;
     size_t extraParam() const;
-    size_t numExtraParam() const;
+    size_t totalVariations() const;
+};
+
+class MatmulExtraParameterObserver
+{
+    const size_t _numberVariations;
+    size_t _paramValue;
+
+protected:
+    size_t getParam() const;
+
+public:
+    MatmulExtraParameterObserver(const size_t numberVariations,
+                                 MatmulExtraParameter& subject);
+
+    size_t numberVariations() const;
+    void setParam(const size_t value);
+};
+
+////////////////////////////////////////
+// MatmulParamInlineMNK
+
+struct MatmulParamInlineMNK : public MatmulExtraParameterObserver
+{
+    MatmulParamInlineMNK(MatmulExtraParameter& subject);
 
     // matrix dimensions are inlined constants or passed as kernel arguments
-    virtual bool _inlineMNK(const size_t) const = 0;
     bool inlineMNK() const;
+};
+
+////////////////////////////////////////
+// MatmulParamLoopOrder
+
+struct MatmulParamLoopOrder : public MatmulExtraParameterObserver
+{
+    MatmulParamLoopOrder(MatmulExtraParameter& subject);
 
     // inner product accumulation loop order, 3! permutations of (j,k,l)
-    virtual size_t _loopOrder(const size_t extraParam) const = 0;
     size_t loopOrder() const;
+};
+
+////////////////////////////////////////
+// MatmulParamGlobalID
+
+struct MatmulParamGlobalID : public MatmulExtraParameterObserver
+{
+    MatmulParamGlobalID(MatmulExtraParameter& subject);
+
+    // use global or group/local ID
+    bool globalID() const;
 };
 
 ////////////////////////////////////////
@@ -183,122 +232,150 @@ public:
 };
 
 ////////////////////////////////////////
+// MatmulGeneralized
+
+class MatmulGeneralized
+{
+    // GEMM if true, pure matrix multiply if false
+    const bool _generalizedMatmul;
+
+public:
+    MatmulGeneralized(const bool GEMM);
+
+    bool generalizedMatmul() const;
+};
+
+////////////////////////////////////////
 // KernelBaseMatmul
 
 class KernelBaseMatmul : public KernelInterface,
                          protected MatmulMatrixDimensions,
                          protected MatmulDataLayout,
                          protected MatmulWorkGroup,
-                         protected MatmulQuadBlocking,
+                         protected MatmulInnerBlocking,
                          protected MatmulExtraParameter,
-                         protected MatmulAttrAutoVec
+                         protected MatmulAttrAutoVec,
+                         protected MatmulGeneralized
 {
 public:
-    using MatmulQuadBlocking::VECTOR_LENGTH;
-
+    // some OpenCL platforms do not support auto vectorize attribute
     using MatmulAttrAutoVec::setUseAttrAutoVec;
 
-    using MatmulExtraParameter::_inlineMNK;
-    using MatmulExtraParameter::_loopOrder;
+    // parameters for kernel code generation
+    using MatmulMatrixDimensions::setMatrixDimensions;
+    using MatmulDataLayout::setDataLayout;
+    using MatmulWorkGroup::setWorkGroup;
+    using MatmulInnerBlocking::setInnerBlocking;
+    using MatmulExtraParameter::setExtraParameter;
+
+    // accessors
+    using MatmulMatrixDimensions::dimM;
+    using MatmulMatrixDimensions::dimN;
+    using MatmulMatrixDimensions::dimK;
+    using MatmulDataLayout::transposeA;
+    using MatmulDataLayout::transposeB;
+    using MatmulDataLayout::transposeC;
+    using MatmulWorkGroup::groupHeight;
+    using MatmulWorkGroup::groupWidth;
+    using MatmulWorkGroup::groupSize;
+    using MatmulInnerBlocking::blockHeight;
+    using MatmulInnerBlocking::blockWidth;
+    using MatmulExtraParameter::extraParam;
+
+    // number of valid kernel extra parameter values
+    using MatmulExtraParameter::totalVariations;
+
+    // kernel extra parameter by each dimension
+    //using MatmulExtraParameter::extraParamDetail;
+    std::vector<size_t> extraParamDetail() const {
+        return MatmulExtraParameter::extraParamDetail();
+    }
 
 protected:
-    // inner product accumulation
-    std::string assignMAD(const Vector< scalarN >& accum,
-                          const Vector< scalarN >& valA,
-                          const Vector< scalarN >& valB,
-                          const size_t j,           // output row
-                          const size_t k,           // output vector element component
-                          const size_t l) const;    // inner product component
-
-    // inner product loop reordering
-    std::ostream& assignMAD(std::ostream& os,
-                            const size_t loopOrder,
-                            const Vector< scalarN >& accum,
-                            const Vector< scalarN >& valA,
-                            const Vector< scalarN >& valB) const;
-
-    KernelBaseMatmul(const bool transposeA,
-                     const bool transposeB,
-                     const size_t numExtraParam);
-
+    KernelBaseMatmul(const bool GEMM);
     virtual ~KernelBaseMatmul();
 
-    virtual std::string namePrefix() const = 0;
+    // inner product accumulation
+    template <typename SCALAR, size_t VECTOR_LENGTH>
+    std::string assignMAD(const Vector< VecType<SCALAR, VECTOR_LENGTH> >& accum,
+                          const Vector< VecType<SCALAR, VECTOR_LENGTH> >& valA,
+                          const Vector< VecType<SCALAR, VECTOR_LENGTH> >& valB,
+                          const size_t j,           // output row
+                          const size_t k,           // output vector element component
+                          const size_t l) const {   // inner product component
+        if (transposeA()) {
+            if (transposeB())
+                // At Bt
+                return assign(accum[j][k], MADValue(valA[l][j], valB[k][l], accum[j][k]));
+            else
+                // At B
+                return assign(accum[j][k], MADValue(valA[l][j], valB[l][k], accum[j][k]));
+        } else {
+            if (transposeB())
+                // A Bt
+                return assign(accum[j][k], MADValue(valA[j][l], valB[k][l], accum[j][k]));
+            else
+                // A B
+                return assign(accum[j][k], MADValue(valA[j][l], valB[l][k], accum[j][k]));
+        }
+    }
+
+    // inner product loop reordering
+    template <typename SCALAR, size_t VECTOR_LENGTH>
+    std::ostream& assignMAD(std::ostream& os,
+                            const size_t loopOrder,
+                            const Vector< VecType<SCALAR, VECTOR_LENGTH> >& accum,
+                            const Vector< VecType<SCALAR, VECTOR_LENGTH> >& valA,
+                            const Vector< VecType<SCALAR, VECTOR_LENGTH> >& valB) const {
+        switch (loopOrder) {
+            case (0) : // (j, k, l)
+                for (size_t j = 0; j < blockHeight(); j++) // vector element
+                for (size_t k = 0; k < VECTOR_LENGTH; k++) // component of vector element
+                for (size_t l = 0; l < VECTOR_LENGTH; l++) // component of temporary values
+                    os << assignMAD(accum, valA, valB, j, k, l);
+                break;
+            case (1) : // (k, j, l)
+                for (size_t k = 0; k < VECTOR_LENGTH; k++) // component of vector element
+                for (size_t j = 0; j < blockHeight(); j++) // vector element
+                for (size_t l = 0; l < VECTOR_LENGTH; l++) // component of temporary values
+                    os << assignMAD(accum, valA, valB, j, k, l);
+                break;
+            case (2) : // (l, j, k)
+                for (size_t l = 0; l < VECTOR_LENGTH; l++) // component of temporary values
+                for (size_t j = 0; j < blockHeight(); j++) // vector element
+                for (size_t k = 0; k < VECTOR_LENGTH; k++) // component of vector element
+                    os << assignMAD(accum, valA, valB, j, k, l);
+                break;
+            case (3) : // (j, l, k)
+                for (size_t j = 0; j < blockHeight(); j++) // vector element
+                for (size_t l = 0; l < VECTOR_LENGTH; l++) // component of temporary values
+                for (size_t k = 0; k < VECTOR_LENGTH; k++) // component of vector element
+                    os << assignMAD(accum, valA, valB, j, k, l);
+                break;
+            case (4) : // (k, l, j)
+                for (size_t k = 0; k < VECTOR_LENGTH; k++) // component of vector element
+                for (size_t l = 0; l < VECTOR_LENGTH; l++) // component of temporary values
+                for (size_t j = 0; j < blockHeight(); j++) // vector element
+                    os << assignMAD(accum, valA, valB, j, k, l);
+                break;
+            case (5) : // (l, k, j)
+                for (size_t l = 0; l < VECTOR_LENGTH; l++) // component of temporary values
+                for (size_t k = 0; k < VECTOR_LENGTH; k++) // component of vector element
+                for (size_t j = 0; j < blockHeight(); j++) // vector element
+                    os << assignMAD(accum, valA, valB, j, k, l);
+                break;
+        }
+        return os;
+    }
 
 public:
-    std::string kernelName() const;
-
-    // initializes and activates paranoid checking of kernel output
-    virtual void paranoidCheck() = 0;
+    bool validParams() const;
+    bool getParams(std::vector<size_t>& params) const;
+    void setParams(const std::vector<size_t>& params);
 
     std::vector<size_t> globalWorkItems() const;
-
     std::vector<size_t> localWorkItems() const;
 
-    // validate kernel parameters
-    bool validateParams(const size_t M,
-                        const size_t N,
-                        const size_t K,
-                        const size_t groupSize,
-                        const size_t blockHeight,
-                        const size_t extraParam) const;
-
-    bool setParams(const size_t M,
-                   const size_t N,
-                   const size_t K,
-                   const size_t groupSize,
-                   const size_t blockHeight,
-                   const size_t extraParam);
-
-    bool setParams(const std::vector<size_t>& args);
-
-    size_t getGroupSize(const std::vector<size_t>& args) const;
-    size_t getBlockHeight(const std::vector<size_t>& args) const;
-    size_t getExtraParam(const std::vector<size_t>& args) const;
-
-    // generate parameter arguments
-    std::vector< std::vector<size_t> > parameters(const size_t M,
-                                                  const size_t N,
-                                                  const size_t K,
-                                                  const int GroupSize,
-                                                  const int BlockHeight = -1) const;
-
-    // generate parameter args likely to contain optimal solutions
-    std::vector< std::vector<size_t> > parameters(const size_t M,
-                                                  const size_t N,
-                                                  const size_t K) const;
-
-    // generate all parameters args
-    std::vector< std::vector<size_t> > parametersAll(const size_t M,
-                                                     const size_t N,
-                                                     const size_t K) const;
-};
-
-// base for matrix multiply
-class KernelMatmul : public KernelBaseMatmul
-{
-protected:
-    KernelMatmul(const bool transposeA,
-                 const bool transposeB,
-                 const size_t numExtraParam);
-
-    virtual ~KernelMatmul();
-
-public:
-    size_t numberFlops() const;
-};
-
-// base for GEMM
-class KernelGenMatmul : public KernelBaseMatmul
-{
-protected:
-    KernelGenMatmul(const bool transposeA,
-                    const bool transposeB,
-                    const size_t numExtraParam);
-
-    virtual ~KernelGenMatmul();
-
-public:
     size_t numberFlops() const;
 };
 
