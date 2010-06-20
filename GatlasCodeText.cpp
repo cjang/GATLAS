@@ -124,6 +124,7 @@ DivValue::DivValue(const size_t left, const Value& right) : BinOpValue(left, rig
 
 std::string DivValue::name() const {
     if ("1" == right()) return left();
+    else if ("0" == left()) return left();
     else return value(" / ");
 }
 

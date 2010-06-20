@@ -196,7 +196,7 @@ public:
         // pointer to matA
         Var< const scalarN* > ptrMatA("ptrMatA", GLOBAL);
         if (transposeA())
-            os << declare(ptrMatA, matA + globalRow
+            os << declare(ptrMatA, matA + wholeHeight() * globalRow
                                         + M * col);
         else
             os << declare(ptrMatA, matA + multHeight(K) * groupSize() * blockRow
@@ -235,23 +235,19 @@ public:
 
             // copy block of A
             if (transposeA())
-                os << assign(*(tmpA + localSize() * VECTOR_LENGTH * row + col), *ptrMatA);
+                for (size_t i = 0; i < blockHeight(); i++) {
+                    const size_t blockNum = i / VECTOR_LENGTH;
+                    const size_t blockIdx = i % VECTOR_LENGTH;
+                    os << assign(*(tmpA + localSize() * (blockHeight() * row + i) + col),
+                                 *(ptrMatA + blockNum + blockIdx * M / VECTOR_LENGTH));
+                }
             else
-                os << assign(*(tmpA + localSize() * row + col), *ptrMatA);
-            for (size_t i = 1; i < blockHeight(); i++)
-                if (transposeA())
-                    os << assign(*(tmpA + localSize() * (VECTOR_LENGTH * row + i) + col),
-                                 *(ptrMatA + i * M / VECTOR_LENGTH));
-                else
+                for (size_t i = 0; i < blockHeight(); i++)
                     os << assign(*(tmpA + localSize() * (row + i * groupSize()) + col),
                                  *(ptrMatA + i * groupSize() * K / VECTOR_LENGTH));
 
             // copy block of B
-            if (transposeB())
-                os << assign(*(tmpB + localSize() * row + col), *ptrMatB);
-            else
-                os << assign(*(tmpB + localSize() * VECTOR_LENGTH * col + row), *ptrMatB);
-            for (size_t i = 1; i < VECTOR_LENGTH; i++)
+            for (size_t i = 0; i < VECTOR_LENGTH; i++)
                 if (transposeB())
                     os << assign(*(tmpB + localSize() * (row + i * groupSize()) + col),
                                  *(ptrMatB + i * groupSize() * K / VECTOR_LENGTH));
@@ -283,15 +279,13 @@ public:
             os << ForLoop(jdx, groupSize(), 1);
 
                 // read in values of tmpA
-                os << assign(valA[0], *ptrA);
-                for (size_t j = 1; j < blockHeight(); j++)
+                for (size_t j = 0; j < blockHeight(); j++)
                     os << assign(valA[j], *(ptrA + j * localSize()));
 
                 os << increment(ptrA, 1);
 
                 // read in values of tmpB
-                os << assign(valB[0], *ptrB);
-                for (size_t j = 1; j < VECTOR_LENGTH; j++)
+                for (size_t j = 0; j < VECTOR_LENGTH; j++)
                     os << assign(valB[j], *(ptrB + j * localSize()));
 
                 os << increment(ptrB, 1);
@@ -305,15 +299,7 @@ public:
 
         const ConstantValue<std::string> outC = matC + multHeight(N) * globalRow + globalCol;
 
-        if (generalizedMatmul())
-            os << assign(*outC,
-                         MADValue(CastValue<scalarN>(alpha),
-                                  accum[0],
-                                  CastValue<scalarN>(beta) * *outC));
-        else
-            os << assign(*outC, accum[0]);
-
-        for (size_t i = 1; i < blockHeight(); i++)
+        for (size_t i = 0; i < blockHeight(); i++)
             if (generalizedMatmul())
                 os << assign(*(outC + i * (N / VECTOR_LENGTH)),
                              MADValue(CastValue<scalarN>(alpha),

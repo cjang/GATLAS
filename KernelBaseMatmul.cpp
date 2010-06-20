@@ -45,21 +45,19 @@ size_t MatmulMatrixDimensions::dimK() const { return _dimK; }
 // MatmulDataLayout
 
 MatmulDataLayout::MatmulDataLayout()
-    : _transposeA(false), _transposeB(false), _transposeC(false), _abcChanged(false)
+    : _transposeA(false), _transposeB(false), _abcChanged(false)
 { }
 
-void MatmulDataLayout::setDataLayout(const bool A, const bool B, const bool C) {
-    _abcChanged = (A != _transposeA) || (B != _transposeB) || (C != _transposeC);
+void MatmulDataLayout::setDataLayout(const bool A, const bool B) {
+    _abcChanged = (A != _transposeA) || (B != _transposeB);
     _transposeA = A;
     _transposeB = B;
-    _transposeC = C;
 }
 
 bool MatmulDataLayout::layoutChanged() const { return _abcChanged; }
 
 bool MatmulDataLayout::transposeA() const { return _transposeA; }
 bool MatmulDataLayout::transposeB() const { return _transposeB; }
-bool MatmulDataLayout::transposeC() const { return _transposeC; }
 
 ////////////////////////////////////////
 // MatmulWorkGroup
@@ -250,14 +248,16 @@ bool KernelBaseMatmul::validParams() const {
 
         // check for blocking compatible with matrix dimensions
         0 == dimM() % (groupHeight() * blockHeight()) &&
-        0 == dimN() % (groupWidth() * VECTOR_LENGTH) &&
+        0 == dimN() % (groupWidth() * blockWidth()) &&
         0 == dimK() % (groupHeight() * VECTOR_LENGTH) &&
         groupHeight() * blockHeight() <= dimM() &&
-        groupWidth() * VECTOR_LENGTH <= dimN() &&
+        groupWidth() * blockWidth() <= dimN() &&
         groupHeight() * VECTOR_LENGTH <= dimK() &&
 
-        // if A and/or C is transposed, then inner blocking must be square
-        ( (transposeA() || transposeC()) ? blockHeight() == VECTOR_LENGTH : true ) &&
+        // if A is transposed, then inner blocking must be even number of squares (quads)
+        ( transposeA()
+              ? (0 == blockHeight() % VECTOR_LENGTH)
+              : true ) &&
 
         // extra parameter
         extraParam() < totalVariations();
@@ -276,7 +276,6 @@ bool KernelBaseMatmul::getParams(vector<size_t>& params) const {
         // data layout
         params.push_back(transposeA());
         params.push_back(transposeB());
-        params.push_back(transposeC());
 
         // work group
         params.push_back(groupHeight());
@@ -304,8 +303,7 @@ void KernelBaseMatmul::setParams(const vector<size_t>& params) {
     // data layout
     const size_t transposeA = params[index++];
     const size_t transposeB = params[index++];
-    const size_t transposeC = params[index++];
-    setDataLayout(transposeA, transposeB, transposeC);
+    setDataLayout(transposeA, transposeB);
 
     // work group
     const size_t groupHeight = params[index++];

@@ -53,7 +53,8 @@ namespace AppUtil
                      std::vector< std::vector<size_t> >& pargsExtraDetail,
                      const bool busTransferToDevice,
                      const bool busTransferFromDevice,
-                     const bool dummyRun = false);
+                     const bool dummyRun = false,
+                     const bool printDebug = false);
 
     // keep top N fastest times
     void markBench(const size_t topN,

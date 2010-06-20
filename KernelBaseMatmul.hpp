@@ -63,7 +63,6 @@ class MatmulDataLayout
     // false      row major
     bool _transposeA;
     bool _transposeB;
-    bool _transposeC;
 
     // indicates images must be reallocated
     bool _abcChanged;
@@ -71,13 +70,12 @@ class MatmulDataLayout
 public:
     MatmulDataLayout();
 
-    void setDataLayout(const bool A, const bool B, const bool C);
+    void setDataLayout(const bool A, const bool B);
 
     bool layoutChanged() const;
 
     bool transposeA() const;
     bool transposeB() const;
-    bool transposeC() const;
 };
 
 ////////////////////////////////////////
@@ -274,7 +272,6 @@ public:
     using MatmulMatrixDimensions::dimK;
     using MatmulDataLayout::transposeA;
     using MatmulDataLayout::transposeB;
-    using MatmulDataLayout::transposeC;
     using MatmulWorkGroup::groupHeight;
     using MatmulWorkGroup::groupWidth;
     using MatmulWorkGroup::groupSize;
@@ -304,12 +301,14 @@ protected:
                           const size_t k,           // output vector element component
                           const size_t l) const {   // inner product component
         if (transposeA()) {
+            const size_t offset = VECTOR_LENGTH * (j / VECTOR_LENGTH);
+            const size_t index = j % VECTOR_LENGTH;
             if (transposeB())
                 // At Bt
-                return assign(accum[j][k], MADValue(valA[l][j], valB[k][l], accum[j][k]));
+                return assign(accum[j][k], MADValue(valA[l + offset][index], valB[k][l], accum[j][k]));
             else
                 // At B
-                return assign(accum[j][k], MADValue(valA[l][j], valB[l][k], accum[j][k]));
+                return assign(accum[j][k], MADValue(valA[l + offset][index], valB[l][k], accum[j][k]));
         } else {
             if (transposeB())
                 // A Bt

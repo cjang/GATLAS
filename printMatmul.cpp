@@ -178,7 +178,7 @@ int main(int argc, char *argv[])
 
     // matrix dimensions, outer and inner blocking, extra parameters
     kernel.setMatrixDimensions(M, N, K);
-    kernel.setDataLayout(transposeA, transposeB, false);
+    kernel.setDataLayout(transposeA, transposeB);
     kernel.setWorkGroup(groupSize);
     kernel.setInnerBlocking(blockHeight, VECTOR_LENGTH);
     kernel.setExtraParameter(extraParam);

@@ -95,7 +95,8 @@ size_t benchLoop(const size_t trialNumber,
                  vector< vector<size_t> >& pargsExtraDetail,
                  const bool busTransferToDevice,
                  const bool busTransferFromDevice,
-                 const bool dummyRun)
+                 const bool dummyRun,
+                 const bool printDebug)
 {
     const bool printStatus = bench.printStatus();
     size_t goodKernelCount = 0;
@@ -109,15 +110,20 @@ size_t benchLoop(const size_t trialNumber,
 
             if (needDummyRun) {
                 cout << "[dummy run] ";
-                bench.run(1, args, busTransferToDevice, busTransferFromDevice);
+                bench.run(1, args, busTransferToDevice, busTransferFromDevice, printDebug);
                 cout << endl;
                 needDummyRun = false;
             }
 
             if (printStatus) cout << "[trial " << trialNumber << "] ";
 
-            const size_t microsecs = bench.run(1, args, busTransferToDevice, busTransferFromDevice);
+            const size_t microsecs = bench.run(1, args, busTransferToDevice, busTransferFromDevice, printDebug);
             if (0 == microsecs) {
+                for (size_t j = 0; j < args.size(); j++) {
+                    cout << args[j];
+                    if (j != args.size() - 1) cout << " ";
+                }
+                cout << endl;
                 pargsOk[i] = false;
                 continue;
             }

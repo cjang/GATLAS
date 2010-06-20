@@ -142,8 +142,8 @@ bool parseOpts(int argc, char *argv[],
         cerr << "error: work item group size must be a number from 1 to 16 inclusive" << endl;
         rc = false;
     }
-    if (transposeA && -1 != blockHeight && blockHeight != VL) {
-        cerr << "error: inner blocking height is fixed to " << VL << " when matrix A is transposed" << endl;
+    if (transposeA && -1 != blockHeight && (0 != blockHeight % VL) ) {
+        cerr << "error: inner blocking height must be multiple of " << VL << " when matrix A is transposed" << endl;
         rc = false;
     }
     if (-1 != blockHeight && blockHeight < VL) {
@@ -171,7 +171,7 @@ vector< vector<size_t> > getParams(OCLApp& oclApp,
     vector<size_t> a;
 
     kernel.setMatrixDimensions(M, N, K);
-    kernel.setDataLayout(transposeA, transposeB, false);
+    kernel.setDataLayout(transposeA, transposeB);
     if (-1 != groupSize) kernel.setWorkGroup(groupSize);
     if (-1 != blockHeight) kernel.setInnerBlocking(blockHeight, VECTOR_LENGTH_MACRO );
     if (-1 != extraParam) kernel.setExtraParameter(extraParam);
@@ -189,7 +189,7 @@ vector< vector<size_t> > getParams(OCLApp& oclApp,
 
         // inner blocking and extra parameter are free
         } else if (-1 != groupSize) {
-            for (size_t bh = VECTOR_LENGTH_MACRO ; bh < MAX_BLOCK_HEIGHT_MACRO; bh++) {
+            for (size_t bh = VECTOR_LENGTH_MACRO ; bh <= MAX_BLOCK_HEIGHT_MACRO; bh++) {
                 kernel.setInnerBlocking(bh, VECTOR_LENGTH_MACRO );
                 for (size_t xp = 0; xp < kernel.totalVariations(); xp++) {
                     kernel.setExtraParameter(xp);
@@ -209,7 +209,7 @@ vector< vector<size_t> > getParams(OCLApp& oclApp,
             for (size_t wg = maxGroupSize; wg > 8; wg--) {
                 kernel.setWorkGroup(wg);
                 bool notEmpty = false;
-                for (size_t bh = VECTOR_LENGTH_MACRO ; bh < MAX_BLOCK_HEIGHT_MACRO; bh++) {
+                for (size_t bh = VECTOR_LENGTH_MACRO ; bh <= MAX_BLOCK_HEIGHT_MACRO; bh++) {
                     kernel.setInnerBlocking(bh, VECTOR_LENGTH_MACRO );
                     if (-1 == loopOrder) {
                         for (size_t xp = 0; xp < kernel.totalVariations(); xp++) {
@@ -232,7 +232,7 @@ vector< vector<size_t> > getParams(OCLApp& oclApp,
 
             // work group size of 64, same as wavefront on 5870
             kernel.setWorkGroup(8);
-            for (size_t bh = VECTOR_LENGTH_MACRO ; bh < MAX_BLOCK_HEIGHT_MACRO; bh++) {
+            for (size_t bh = VECTOR_LENGTH_MACRO ; bh <= MAX_BLOCK_HEIGHT_MACRO; bh++) {
                 kernel.setInnerBlocking(bh, VECTOR_LENGTH_MACRO );
                 if (-1 == loopOrder) {
                     for (size_t xp = 0; xp < kernel.totalVariations(); xp++) {
@@ -297,7 +297,8 @@ size_t mainLoop(KernelInterface& kernel,
                                              pargsExtraDetail,
                                              busTransferToDevice,
                                              busTransferFromDevice,
-                                             dummyRun);
+                                             dummyRun,
+                                             printDebug);
 
         cout << endl;
 
@@ -405,7 +406,8 @@ int main(int argc, char *argv[])
                                                M, N, K,
                                                transposeA, transposeB,
                                                groupSize, blockHeight, extraParam,
-                                               (nestedOptimization ? 0 : -1));
+                                               -1);
+                                               //(nestedOptimization ? 0 : -1));
 
     vector<bool> pargsOk;
     vector<double> pargsAverage;
@@ -419,7 +421,7 @@ int main(int argc, char *argv[])
              pargs,
              pargsOk,
              pargsAverage,
-             numberTrials,
+             nestedOptimization ? 1 : numberTrials,
              topN,
              busTransferToDevice,
              busTransferFromDevice,

@@ -222,13 +222,17 @@ public:
         os << ForLoop(idx, K / VECTOR_LENGTH, 1);
 
             // read in values of matrix A
-            for (size_t j = 0; j < blockHeight(); j++)
-                if (transposeA())
+            if (transposeA())
+                for (size_t j = 0; j < blockHeight(); j++) {
+                    const size_t blockNum = j / VECTOR_LENGTH;
+                    const size_t blockIdx = j % VECTOR_LENGTH;
                     os << assign(valA[j],
                                  ReadImage(matA, sampler,
-                                           globalRow,
-                                           VECTOR_LENGTH * idx + j));
-                else
+                                           wholeHeight() * globalRow + blockNum,
+                                           VECTOR_LENGTH * idx + blockIdx));
+                }
+            else
+                for (size_t j = 0; j < blockHeight(); j++)
                     os << assign(valA[j],
                                  ReadImage(matA, sampler,
                                            idx,
@@ -254,13 +258,7 @@ public:
 
         if (generalizedMatmul()) {
             const ConstantValue<std::string> outC = matC_buf + multHeight(N) * globalRow + globalCol;
-
-            os << assign(*outC,
-                         MADValue(CastValue<scalarN>(alpha),
-                                  accum[0],
-                                  CastValue<scalarN>(beta) * *outC));
-
-            for (size_t i = 1; i < blockHeight(); i++)
+            for (size_t i = 0; i < blockHeight(); i++)
                 os << assign(*(outC + i * (N / VECTOR_LENGTH)),
                              MADValue(CastValue<scalarN>(alpha),
                                       accum[i],
@@ -272,12 +270,7 @@ public:
             const ConstantValue<std::string> valueGlobalRow = globalID()
                                                                   ? globalRow
                                                                   : groupSize() * blockRow + row;
-            os << WriteImage(matC_img,
-                             valueGlobalCol,
-                             blockHeight() * valueGlobalRow,
-                             accum[0]);
-
-            for (size_t i = 1; i < blockHeight(); i++)
+            for (size_t i = 0; i < blockHeight(); i++)
                 os << WriteImage(matC_img,
                                  valueGlobalCol,
                                  blockHeight() * valueGlobalRow + i,
