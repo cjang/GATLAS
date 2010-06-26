@@ -104,9 +104,9 @@ size_t benchLoop(const size_t trialNumber,
     bool needDummyRun = dummyRun;
 
     // main loop
-    for (size_t i = 0; i < pargs.size(); i++) {
-        const vector<size_t>& args = pargs[i];
-        if (pargsOk[i]) {
+    for (size_t j = 0; j < pargs.size(); j++) {
+        const vector<size_t>& args = pargs[j];
+        if (pargsOk[j]) {
 
             if (needDummyRun) {
                 cout << "[dummy run] ";
@@ -118,32 +118,39 @@ size_t benchLoop(const size_t trialNumber,
             if (printStatus) cout << "[trial " << trialNumber << "] ";
 
             const size_t microsecs = bench.run(1, args, busTransferToDevice, busTransferFromDevice, printDebug);
+
+            const vector<size_t>& extra = pargsExtraDetail[j] = kernel.extraParamDetail();
+
             if (0 == microsecs) {
-                for (size_t j = 0; j < args.size(); j++) {
-                    cout << args[j];
-                    if (j != args.size() - 1) cout << " ";
+                cout << "\t";
+                for (size_t i = 0; i < args.size(); i++) {
+                    cout << args[i];
+                    if (i != args.size() - 1) cout << " ";
                 }
-                cout << endl;
-                pargsOk[i] = false;
+                cout << "\t(";
+                for (size_t i = 0; i < extra.size(); i++) {
+                    cout << extra[i];
+                    if (i != extra.size() -1) cout << " ";
+                }
+                cout << ")" << endl;
+                pargsOk[j] = false;
                 continue;
             }
 
             goodKernelCount++;
 
-            const vector<size_t>& extra = pargsExtraDetail[i] = kernel.extraParamDetail();
-
             const size_t numflops = kernel.numberFlops();
-            pargsTime[i] += microsecs;
-            pargsFlops[i] += numflops;
+            pargsTime[j] += microsecs;
+            pargsFlops[j] += numflops;
 
             // single pass mean and variance
             const double avg = static_cast<double>(numflops) / microsecs / 1000;
             if (0 == trialNumber) {
-                pargsAverage[i] = avg;
+                pargsAverage[j] = avg;
             } else {
-                const double delta = avg - pargsAverage[i];
-                pargsAverage[i] += (static_cast<double>(1) / (trialNumber + 1)) * delta;
-                pargsVariance[i] += (static_cast<double>(trialNumber) / (trialNumber + 1)) * delta * delta;
+                const double delta = avg - pargsAverage[j];
+                pargsAverage[j] += (static_cast<double>(1) / (trialNumber + 1)) * delta;
+                pargsVariance[j] += (static_cast<double>(trialNumber) / (trialNumber + 1)) * delta * delta;
             }
 
             if (printStatus) {
@@ -152,12 +159,12 @@ size_t benchLoop(const size_t trialNumber,
                     cout << args[i];
                     if (i != args.size() - 1) cout << " ";
                 }
-                cout << "\t";
+                cout << "\t(";
                 for (size_t i = 0; i < extra.size(); i++) {
                     cout << extra[i];
                     if (i != extra.size() -1) cout << " ";
                 }
-                cout << endl;
+                cout << ")" << endl;
             }
         }
     }
@@ -289,12 +296,12 @@ void printBench(const size_t numberTrials,
             cout << args[i];
             if (i != args.size() - 1) cout << " ";
         }
-        cout << "\t";
+        cout << "\t(";
         for (size_t i = 0; i < extra.size(); i++) {
             cout << extra[i];
             if (i != extra.size() -1) cout << " ";
         }
-        cout << endl;
+        cout << ")" << endl;
     }
 }
 

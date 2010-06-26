@@ -144,6 +144,7 @@ size_t Bench::run(const size_t numTrials,
 
     // allow kernel to check results, sometimes bad kernels do nothing
     const bool isOk = _kernel.checkOutput(_oclApp, printDebug);
+    if (! isOk && _printStatus) cerr << "fail";
 
     // final cleanup
     if (!_oclApp.wait()) {
