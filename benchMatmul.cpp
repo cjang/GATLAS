@@ -50,9 +50,10 @@ bool parseOpts(int argc, char *argv[],
                bool& busTransferToDevice,
                bool& busTransferFromDevice,
                bool& paranoidCheck,
+               bool& vectorAttributeHint,
                bool& printDebug) {
     int opt;
-    while ((opt = getopt(argc, argv, "heabsrpzd:m:n:k:g:y:x:t:w:")) != -1) {
+    while ((opt = getopt(argc, argv, "heabsrpvzd:m:n:k:g:y:x:t:w:")) != -1) {
         switch (opt) {
             case ('h') :
                 cerr << "usage: " << argv[0]
@@ -60,7 +61,7 @@ bool parseOpts(int argc, char *argv[],
                         " [-g groupSize [-y blockHeight [-x extraParam]]]"
                         " [-t numberTrials]"
                         " [-w topN]"
-                        " [-e] [-a] [-b] [-s] [-r] [-p] [-z] [-h]" << endl
+                        " [-e] [-a] [-b] [-s] [-r] [-p] [-v] [-z] [-h]" << endl
                      << "\t-d cpu, gpu or accelerator device, optional X is the device number" << endl
                      << "\t-m matrix dimension M" << endl
                      << "\t-n matrix dimension N" << endl
@@ -76,6 +77,7 @@ bool parseOpts(int argc, char *argv[],
                      << "\t-s include PCIe bus data transfer to device in timing (default no)" << endl
                      << "\t-r include PCIe bus data transfer from device in timing (default no)" << endl
                      << "\t-p paranoid output matrix check (default no)" << endl
+                     << "\t-v disable kernel vector attribute hint (default enabled)" << endl
                      << "\t-z print matrix output (default no)" << endl
                      << "\t-h help" << endl;
                 exit(1);
@@ -94,6 +96,7 @@ bool parseOpts(int argc, char *argv[],
             case ('s') : busTransferToDevice = true; break;
             case ('r') : busTransferFromDevice = true; break;
             case ('p') : paranoidCheck = true; break;
+            case ('v') : vectorAttributeHint = false; break;
             case ('z') : printDebug = true; break;
         }
     }
@@ -360,6 +363,7 @@ int main(int argc, char *argv[])
     bool transposeA = false, transposeB = false;
     bool busTransferToDevice = false, busTransferFromDevice = false;
     bool paranoidCheck = false;
+    bool vectorAttributeHint = true;
     bool printDebug = false;
 
     if (!parseOpts(argc, argv,
@@ -372,6 +376,7 @@ int main(int argc, char *argv[])
                    transposeA, transposeB,
                    busTransferToDevice, busTransferFromDevice,
                    paranoidCheck,
+                   vectorAttributeHint,
                    printDebug))
         exit(1);
 
@@ -382,24 +387,8 @@ int main(int argc, char *argv[])
     KERNEL_CLASS_MACRO < SCALAR_MACRO , VECTOR_LENGTH_MACRO > kernel( GEMM_MACRO );
     Bench bench(oclApp, kernel);
 
-    // does this device support vector attribute hint?
-    // ATI    - ok
-    // nVidia - ok but slow (needs scalar kernel)
-    // CELL   - program build failure
-    KernelProbeAutoVectorize< SCALAR_MACRO , VECTOR_LENGTH_MACRO > kpav;
-    Bench kpavBench(oclApp, kpav);
-    vector< vector<size_t> > kpavArgs;
-    vector<size_t> a;
-    a.push_back(true);
-    kpavArgs.push_back(a);
-    if (0 == mainLoop(kpav, kpavBench, kpavArgs, 1, -1, false, false, false, false)) {
-        cout << "device does not support vector attribute hint" << endl;
-        kernel.setUseAttrAutoVec(false);
-    } else {
-        cout << "vector attribute hint ok" << endl;
-    }
-
-    cout << endl;
+    // kernel vector attribute hint?
+    kernel.setUseAttrAutoVec(vectorAttributeHint);
 
     vector< vector<size_t> > pargs = getParams(oclApp,
                                                kernel,
