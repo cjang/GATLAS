@@ -199,7 +199,7 @@ size_t benchLoop(const size_t trialNumber,
         if (pargsOk[j]) {
 
             // check memo
-            const size_t memoState = journal.memoRunState(args);
+            const size_t memoState = journal.memoRunState(kernel, args);
 
             if (needDummyRun && Journal::MISSING == memoState) {
                 cout << "[dummy run] ";
@@ -214,7 +214,7 @@ size_t benchLoop(const size_t trialNumber,
             if (Journal::MISSING == memoState) {
                 microsecs = bench.run(1, args, busTransferToDevice, busTransferFromDevice, printDebug);
             } else if (Journal::RUN_OK == memoState) {
-                microsecs = journal.memoTime(args);
+                microsecs = journal.memoTime(kernel, args);
                 kernel.setParams(args);
             } else { // these kernel parameters cause seg fault or hang
                 if (printStatus) cout << "bad";

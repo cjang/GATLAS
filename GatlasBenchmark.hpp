@@ -66,8 +66,7 @@ class Journal
     std::map<std::string, int>    _memoRunState; // contains all param keys
     std::map<std::string, size_t> _memoTime;     // only contains param keys in state KERNEL_OK
 
-    std::string         toString(const std::vector<size_t>& params) const;
-    std::vector<size_t> toParams(const std::string& key) const;
+    std::string         toString(const KernelInterface& kernel, const std::vector<size_t>& params) const;
 
 public:
     enum RunState { MISSING           = 0,
@@ -82,11 +81,11 @@ public:
     bool loadMemo();
 
     // read from memo
-    int    memoRunState(const std::vector<size_t>& params);
-    size_t memoTime(const std::vector<size_t>& params);
+    int    memoRunState(const KernelInterface& kernel, const std::vector<size_t>& params);
+    size_t memoTime(const KernelInterface& kernel, const std::vector<size_t>& params);
 
     // write to memo file
-    bool takeMemo(const std::vector<size_t>& params, const int value) const;
+    bool takeMemo(const KernelInterface& kernel, const std::vector<size_t>& params, const int value) const;
 };
 
 class Bench

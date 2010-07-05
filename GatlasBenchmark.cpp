@@ -41,24 +41,12 @@ ostream& operator<< (ostream& os, const KernelInterface& k) {
 ////////////////////////////////////////
 // Journal
 
-string Journal::toString(const vector<size_t>& params) const {
+string Journal::toString(const KernelInterface& kernel, const vector<size_t>& params) const {
     stringstream ss;
+    ss << kernel.kernelName() << "_";
     for (size_t i = 0; i < params.size(); i++)
         ss << params[i] << "_";
     return ss.str();
-}
-
-vector<size_t> Journal::toParams(const string& key) const {
-    vector<size_t> params;
-    size_t valueIndex = 0, value;
-    while (valueIndex < key.size()) {
-        const size_t delimIndex = key.find('_', valueIndex);
-        stringstream ss(key.substr(valueIndex, delimIndex - valueIndex));
-        ss >> value;
-        params.push_back(value);
-        valueIndex = delimIndex + 1;
-    }
-    return params;
 }
 
 Journal::Journal(const std::string& journalFile)
@@ -82,26 +70,26 @@ bool Journal::loadMemo() {
     }
 }
 
-int Journal::memoRunState(const vector<size_t>& params) {
-    const string key = toString(params);
+int Journal::memoRunState(const KernelInterface& kernel, const vector<size_t>& params) {
+    const string key = toString(kernel, params);
     if (0 == _memoRunState.count(key))
         return MISSING; // not in memo
     else
         return _memoRunState[key];
 }
 
-size_t Journal::memoTime(const vector<size_t>& params) {
-    const string key = toString(params);
+size_t Journal::memoTime(const KernelInterface& kernel, const vector<size_t>& params) {
+    const string key = toString(kernel, params);
     if (0 == _memoTime.count(key))
         return 0; // not in memo
     else
         return _memoTime[key];
 }
 
-bool Journal::takeMemo(const std::vector<size_t>& params, const int value) const {
+bool Journal::takeMemo(const KernelInterface& kernel, const std::vector<size_t>& params, const int value) const {
     ofstream journal(_journalFile.c_str(), ios::app);
     if (journal.is_open()) {
-        journal << toString(params) << "\t" << value << endl;
+        journal << toString(kernel, params) << "\t" << value << endl;
         return true;
     } else {
         return false;
@@ -158,14 +146,14 @@ size_t Bench::run(const size_t numTrials,
 
     if (_printStatus && printDebug) cerr << _kernel << endl;
 
-    if (_journal) _journal->takeMemo(args, Journal::BUILD_IN_PROGRESS);
+    if (_journal) _journal->takeMemo(_kernel, args, Journal::BUILD_IN_PROGRESS);
 
     // kernels change depending on arguments
     if (_printStatus) cerr << "rebuilding kernel...";
     if (! rebuildProgram()) return 0; // build program failed
     if (_printStatus) cerr << " done\t";
 
-    if (_journal) _journal->takeMemo(args, Journal::BUILD_OK);
+    if (_journal) _journal->takeMemo(_kernel, args, Journal::BUILD_OK);
 
     // set kernel arguments (exclude PCIe bus transfer cost)
     if (!busTransferToDevice)
@@ -175,7 +163,7 @@ size_t Bench::run(const size_t numTrials,
     const vector<size_t> globalDims = _kernel.globalWorkItems();
     const vector<size_t> localDims = _kernel.localWorkItems();
 
-    if (_journal) _journal->takeMemo(args, Journal::RUN_IN_PROGRESS);
+    if (_journal) _journal->takeMemo(_kernel, args, Journal::RUN_IN_PROGRESS);
 
     // start gettimeofday timer
     struct timeval start_time;
@@ -253,8 +241,8 @@ size_t Bench::run(const size_t numTrials,
     }
 
     if (_journal) {
-        _journal->takeMemo(args, Journal::RUN_OK);
-        _journal->takeMemo(args, isOk ? elapsed_time : 0);
+        _journal->takeMemo(_kernel, args, Journal::RUN_OK);
+        _journal->takeMemo(_kernel, args, isOk ? elapsed_time : 0);
     }
 
     return isOk ? elapsed_time : 0;
