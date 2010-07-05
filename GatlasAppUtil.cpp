@@ -211,11 +211,16 @@ size_t benchLoop(const size_t trialNumber,
             if (printStatus) cout << "[trial " << trialNumber << "] ";
 
             size_t microsecs;
-            if (Journal::MISSING == memoState) {
+            if (Journal::MISSING == memoState || Journal::RUN_OK == memoState) {
                 microsecs = bench.run(1, args, busTransferToDevice, busTransferFromDevice, printDebug);
-            } else if (Journal::RUN_OK == memoState) {
-                microsecs = journal.memoTime(kernel, args);
-                kernel.setParams(args);
+
+// The memo has no concept of more than one sample trial for any benchmark.
+// If memoized times are used, the whole point of a statistical average
+// becomes impossible. Multiple trials and EM will not work.
+//            } else if (Journal::RUN_OK == memoState) {
+//                microsecs = journal.memoTime(kernel, args);
+//                kernel.setParams(args);
+
             } else { // these kernel parameters cause seg fault or hang
                 if (printStatus) cout << "bad";
                 microsecs = 0;

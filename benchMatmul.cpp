@@ -46,7 +46,7 @@ bool parseOpts(int argc, char *argv[],
                int& extraParam,
                size_t& numberTrials,
                int& topN,
-               bool& nestedOptimization,
+               bool& emOptimization,
                bool& transposeA,
                bool& transposeB,
                bool& busTransferToDevice,
@@ -74,7 +74,7 @@ bool parseOpts(int argc, char *argv[],
                      << "\t-x extra parameter" << endl
                      << "\t-t number of trials (default is 1)" << endl
                      << "\t-w keep topN (groupSize, blockHeight) combinations" << endl
-                     << "\t-e use faster nested optimization (default no)" << endl
+                     << "\t-e use faster expectation maximization optimization (default no)" << endl
                      << "\t-a transpose A (default no)" << endl
                      << "\t-b transpose B (default no)" << endl
                      << "\t-s include PCIe bus data transfer to device in timing (default no)" << endl
@@ -95,7 +95,7 @@ bool parseOpts(int argc, char *argv[],
             case ('x') : extraParam = atoi(optarg); break;
             case ('t') : numberTrials = atoi(optarg); break;
             case ('w') : topN = atoi(optarg); break;
-            case ('e') : nestedOptimization = true; break;
+            case ('e') : emOptimization = true; break;
             case ('a') : transposeA = true; break;
             case ('b') : transposeB = true; break;
             case ('s') : busTransferToDevice = true; break;
@@ -164,8 +164,8 @@ bool parseOpts(int argc, char *argv[],
     }
 
     // doesn't really make sense to specify blocking with nested optimization
-    if (nestedOptimization && (-1 != groupSize || -1 != blockHeight || -1 != extraParam)) {
-        cerr << "error: nested optimization will find optimal blocking" << endl;
+    if (emOptimization && (-1 != groupSize || -1 != blockHeight || -1 != extraParam)) {
+        cerr << "error: expectation maximization optimization will find optimal blocking" << endl;
         rc = false;
     }
 
@@ -176,8 +176,7 @@ vector< vector<size_t> > getParams(OCLApp& oclApp,
                                    KERNEL_CLASS_MACRO < SCALAR_MACRO , VECTOR_LENGTH_MACRO > & kernel,
                                    const size_t M, const size_t N, const size_t K,
                                    const bool transposeA, const bool transposeB,
-                                   const size_t groupSize, const size_t blockHeight, const size_t extraParam,
-                                   const int loopOrder)
+                                   const size_t groupSize, const size_t blockHeight, const size_t extraParam)
 {
     vector< vector<size_t> > pargs;
     vector<size_t> a;
@@ -210,7 +209,7 @@ vector< vector<size_t> > getParams(OCLApp& oclApp,
                 }
             }
 
-        // work group size, inner block and extra parameter are free
+        // work group size is free, inner blocking and extra parameter may be specified
         } else {
             // maximum value of group size
             const size_t maxPossibleGroupSize = sqrt(oclApp.maxWorkGroupSize());
@@ -218,22 +217,22 @@ vector< vector<size_t> > getParams(OCLApp& oclApp,
                                             ? MAX_GROUP_SIZE_MACRO
                                             : maxPossibleGroupSize;
 
+            // inner blocking limits
+            const size_t innerBlockingMin = (-1 != blockHeight) ? blockHeight : VECTOR_LENGTH_MACRO ;
+            const size_t innerBlockingMax = (-1 != blockHeight) ? blockHeight : MAX_BLOCK_HEIGHT_MACRO ;
+
+            // extra parameter limits
+            const size_t extraParamMin = (-1 != extraParam) ? extraParam : 0;
+            const size_t extraParamMax = (-1 != extraParam) ? extraParam + 1 : kernel.totalVariations();
+
             // largest valid group size for problem dimensions
             for (size_t wg = maxGroupSize; wg > 8; wg--) {
                 kernel.setWorkGroup(wg);
                 bool notEmpty = false;
-                for (size_t bh = VECTOR_LENGTH_MACRO ; bh <= MAX_BLOCK_HEIGHT_MACRO; bh++) {
+                for (size_t bh = innerBlockingMin ; bh <= innerBlockingMax; bh++) {
                     kernel.setInnerBlocking(bh, VECTOR_LENGTH_MACRO );
-                    if (-1 == loopOrder) {
-                        for (size_t xp = 0; xp < kernel.totalVariations(); xp++) {
-                            kernel.setExtraParameter(xp);
-                            if (kernel.getParams(a)) {
-                                pargs.push_back(a);
-                                notEmpty = true;
-                            }
-                        }
-                    } else {
-                        kernel.setExtraParameter(0);
+                    for (size_t xp = extraParamMin; xp < extraParamMax; xp++) {
+                        kernel.setExtraParameter(xp);
                         if (kernel.getParams(a)) {
                             pargs.push_back(a);
                             notEmpty = true;
@@ -245,15 +244,10 @@ vector< vector<size_t> > getParams(OCLApp& oclApp,
 
             // work group size of 64, same as wavefront on 5870
             kernel.setWorkGroup(8);
-            for (size_t bh = VECTOR_LENGTH_MACRO ; bh <= MAX_BLOCK_HEIGHT_MACRO; bh++) {
+            for (size_t bh = innerBlockingMin ; bh <= innerBlockingMax; bh++) {
                 kernel.setInnerBlocking(bh, VECTOR_LENGTH_MACRO );
-                if (-1 == loopOrder) {
-                    for (size_t xp = 0; xp < kernel.totalVariations(); xp++) {
-                        kernel.setExtraParameter(xp);
-                        if (kernel.getParams(a)) pargs.push_back(a);
-                    }
-                } else {
-                    kernel.setExtraParameter(0);
+                for (size_t xp = extraParamMin; xp < extraParamMax; xp++) {
+                    kernel.setExtraParameter(xp);
                     if (kernel.getParams(a)) pargs.push_back(a);
                 }
             }
@@ -315,8 +309,6 @@ size_t mainLoop(KernelInterface& kernel,
                                              dummyRun,
                                              printDebug);
 
-        cout << endl;
-
         // prune to top N parameter combinations
         // parameter combinations with the same time are treated together
         if (-1 != topN) AppUtil::markBench(topN, pargsOk, pargsTime);
@@ -374,7 +366,7 @@ int main(int argc, char *argv[])
     int groupSize = -1, blockHeight = -1, extraParam = -1;
     size_t numberTrials = 1;
     int topN = -1;
-    bool nestedOptimization = false;
+    bool emOptimization = false;
     bool transposeA = false, transposeB = false;
     bool busTransferToDevice = false, busTransferFromDevice = false;
     bool paranoidCheck = false;
@@ -388,7 +380,7 @@ int main(int argc, char *argv[])
                    groupSize, blockHeight, extraParam,
                    numberTrials,
                    topN,
-                   nestedOptimization,
+                   emOptimization,
                    transposeA, transposeB,
                    busTransferToDevice, busTransferFromDevice,
                    paranoidCheck,
@@ -411,68 +403,116 @@ int main(int argc, char *argv[])
     // kernel vector attribute hint?
     kernel.setUseAttrAutoVec(vectorAttributeHint);
 
-    vector< vector<size_t> > pargs = getParams(oclApp,
-                                               kernel,
-                                               M, N, K,
-                                               transposeA, transposeB,
-                                               groupSize, blockHeight, extraParam,
-                                               -1);
-                                               //(nestedOptimization ? 0 : -1));
+    // not using EM
+    if (! emOptimization) {
+        // brute force benchmark timings
+        vector< vector<size_t> > pargs = getParams(oclApp,
+                                                   kernel,
+                                                   M, N, K,
+                                                   transposeA, transposeB,
+                                                   groupSize, blockHeight, extraParam);
 
-    vector<bool> pargsOk;
-    vector<double> pargsAverage;
-    for (size_t i = 0; i < pargs.size(); i++) {
-        pargsOk.push_back(true);
-        pargsAverage.push_back(0);
-    }
+        vector<bool> pargsOk;
+        vector<double> pargsAverage;
+        for (size_t i = 0; i < pargs.size(); i++) {
+            pargsOk.push_back(true);
+            pargsAverage.push_back(0);
+        }
 
-    journal.loadMemo();
-    mainLoop(kernel,
-             bench,
-             journal,
-             pargs,
-             pargsOk,
-             pargsAverage,
-             nestedOptimization ? 1 : numberTrials,
-             topN,
-             busTransferToDevice,
-             busTransferFromDevice,
-             printDebug,
-             paranoidCheck);
+        journal.loadMemo();
+        mainLoop(kernel,
+                 bench,
+                 journal,
+                 pargs,
+                 pargsOk,
+                 pargsAverage,
+                 numberTrials,
+                 topN,
+                 busTransferToDevice,
+                 busTransferFromDevice,
+                 printDebug,
+                 paranoidCheck);
 
-    if (! nestedOptimization) {
         // useful for parent process manager to know not to respawn process
         cout << "***DONE***" << endl;
-        return 0; // one full pass only
+        return 0;
     }
 
-    // nested optimization needs second pass
-    cout << endl << "*** nested optimization second pass ***" << endl;
+    // using EM
+    size_t bestGroupSize, bestBlockHeight, bestExtraParam = 0;
+    vector< vector<size_t> > pargs;
+    bool foundMax = false;
+    while (! foundMax) {
 
-    // find inner and outer blocking of the fastest kernel
-    const size_t bestIndex = AppUtil::rankBench(0, pargsOk, pargsAverage);
-    kernel.setParams(pargs[bestIndex]);
-    const size_t bestGroupSize = kernel.groupSize();
-    const size_t bestBlockHeight = kernel.blockHeight();
+        // emStep of 0 is expectation lower bound (fix extraParam, leave groupSize and blockHeight free)
+        // emStep of 1 is maximization of bound (fix groupSize and blockHeight, leave extraParam free)
+        for (size_t emStep = 0; emStep <= 1; emStep++) {
 
-    pargs = getParams(oclApp,
-                      kernel,
-                      M, N, K,
-                      transposeA, transposeB,
-                      bestGroupSize, bestBlockHeight, extraParam,
-                      -1);
+            groupSize   = (0 == emStep) ? -1 : bestGroupSize;
+            blockHeight = (0 == emStep) ? -1 : bestBlockHeight;
+            extraParam  = (0 == emStep) ? bestExtraParam : -1;
 
-    journal.loadMemo();
-    mainLoop(kernel,
-             bench,
-             journal,
-             pargs,
-             numberTrials,
-             topN,
-             busTransferToDevice,
-             busTransferFromDevice,
-             printDebug,
-             paranoidCheck);
+            pargs = getParams(oclApp,
+                              kernel,
+                              M, N, K,
+                              transposeA, transposeB,
+                              groupSize, blockHeight, extraParam);
+
+            vector<bool> pargsOk;
+            vector<double> pargsAverage;
+            for (size_t i = 0; i < pargs.size(); i++) {
+                pargsOk.push_back(true);
+                pargsAverage.push_back(0);
+            }
+
+            journal.loadMemo();
+            mainLoop(kernel,
+                     bench,
+                     journal,
+                     pargs,
+                     pargsOk,
+                     pargsAverage,
+                     1, //numberTrials,
+                     topN,
+                     busTransferToDevice,
+                     busTransferFromDevice,
+                     printDebug,
+                     paranoidCheck);
+
+            // fastest kernel
+            const size_t bestIndex = AppUtil::rankBench(0, pargsOk, pargsAverage);
+            kernel.setParams(pargs[bestIndex]);
+
+            // stop when fastest kernel does not change
+            if (bestGroupSize == kernel.groupSize() &&
+                bestBlockHeight == kernel.blockHeight() &&
+                bestExtraParam == kernel.extraParam())
+                foundMax = true;
+
+            bestGroupSize = kernel.groupSize();
+            bestBlockHeight = kernel.blockHeight();
+            bestExtraParam = kernel.extraParam();
+        }
+    }
+
+    // if more than one trial is specified, a final average
+    if (numberTrials > 1) {
+        pargs = getParams(oclApp,
+                          kernel,
+                          M, N, K,
+                          transposeA, transposeB,
+                          bestGroupSize, bestBlockHeight, bestExtraParam);
+        mainLoop(kernel,
+                 bench,
+                 journal,
+                 pargs,
+                 numberTrials,
+                 topN,
+                 busTransferToDevice,
+                 busTransferFromDevice,
+                 printDebug,
+                 paranoidCheck);
+    }
 
     // useful for parent process manager to know not to respawn process
     cout << "***DONE***" << endl;
