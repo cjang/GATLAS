@@ -439,6 +439,7 @@ int main(int argc, char *argv[])
 
     // using EM
     size_t bestGroupSize, bestBlockHeight, bestExtraParam = 0;
+    int bestIndex = -1;
     vector< vector<size_t> > pargs;
     bool foundMax = false;
     while (! foundMax) {
@@ -447,50 +448,72 @@ int main(int argc, char *argv[])
         // emStep of 1 is maximization of bound (fix groupSize and blockHeight, leave extraParam free)
         for (size_t emStep = 0; emStep <= 1; emStep++) {
 
-            groupSize   = (0 == emStep) ? -1 : bestGroupSize;
-            blockHeight = (0 == emStep) ? -1 : bestBlockHeight;
-            extraParam  = (0 == emStep) ? bestExtraParam : -1;
+            // need to handle case when all kernels are bad
+            while (-1 == bestIndex) {
 
-            pargs = getParams(oclApp,
-                              kernel,
-                              M, N, K,
-                              transposeA, transposeB,
-                              groupSize, blockHeight, extraParam);
+                groupSize   = (0 == emStep) ? -1 : bestGroupSize;
+                blockHeight = (0 == emStep) ? -1 : bestBlockHeight;
+                extraParam  = (0 == emStep) ? bestExtraParam : -1;
 
-            vector<bool> pargsOk;
-            vector<double> pargsAverage;
-            for (size_t i = 0; i < pargs.size(); i++) {
-                pargsOk.push_back(true);
-                pargsAverage.push_back(0);
+                pargs = getParams(oclApp,
+                                  kernel,
+                                  M, N, K,
+                                  transposeA, transposeB,
+                                  groupSize, blockHeight, extraParam);
+
+                vector<bool> pargsOk;
+                vector<double> pargsAverage;
+                for (size_t i = 0; i < pargs.size(); i++) {
+                    pargsOk.push_back(true);
+                    pargsAverage.push_back(0);
+                }
+
+                journal.loadMemo();
+                mainLoop(kernel,
+                         bench,
+                         journal,
+                         pargs,
+                         pargsOk,
+                         pargsAverage,
+                         1, //numberTrials,
+                         topN,
+                         busTransferToDevice,
+                         busTransferFromDevice,
+                         printDebug,
+                         paranoidCheck);
+
+                // fastest kernel
+                bestIndex = AppUtil::rankBench(0, pargsOk, pargsAverage);
+                if (-1 == bestIndex) {
+                    // there were no good kernels found!
+                    if (0 == emStep) {
+                        // expectation lower bound could not be found for given value of extra parameter
+                        // so try another one
+                        bestExtraParam = (bestExtraParam + 1) % kernel.totalVariations();
+                        continue;
+                    } else {
+                        // if this happens during maximization, then just give up
+                        cerr << "error: no good kernels found for group size " << bestGroupSize
+                             << " and block height " << bestBlockHeight
+                             << ", giving up"
+                             << "***DONE***" << endl;
+                        exit(1);
+                    }
+                }
+                kernel.setParams(pargs[bestIndex]);
+
+                // stop when fastest kernel does not change
+                if (bestGroupSize == kernel.groupSize() &&
+                    bestBlockHeight == kernel.blockHeight() &&
+                    bestExtraParam == kernel.extraParam())
+                    foundMax = true;
+
+                bestGroupSize = kernel.groupSize();
+                bestBlockHeight = kernel.blockHeight();
+                bestExtraParam = kernel.extraParam();
             }
 
-            journal.loadMemo();
-            mainLoop(kernel,
-                     bench,
-                     journal,
-                     pargs,
-                     pargsOk,
-                     pargsAverage,
-                     1, //numberTrials,
-                     topN,
-                     busTransferToDevice,
-                     busTransferFromDevice,
-                     printDebug,
-                     paranoidCheck);
-
-            // fastest kernel
-            const size_t bestIndex = AppUtil::rankBench(0, pargsOk, pargsAverage);
-            kernel.setParams(pargs[bestIndex]);
-
-            // stop when fastest kernel does not change
-            if (bestGroupSize == kernel.groupSize() &&
-                bestBlockHeight == kernel.blockHeight() &&
-                bestExtraParam == kernel.extraParam())
-                foundMax = true;
-
-            bestGroupSize = kernel.groupSize();
-            bestBlockHeight = kernel.blockHeight();
-            bestExtraParam = kernel.extraParam();
+            bestIndex = -1;
         }
     }
 
