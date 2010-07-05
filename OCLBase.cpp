@@ -422,7 +422,7 @@ OCLBase::init_queues()
                 // From AMD support forums, as of SDK v2.0, the Catalyst driver
                 // does not support concurrent kernel execution although the
                 // hardware has the capability (i.e. Eyefinity).
-                //                     CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE,
+                                     CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE |
                                      CL_QUEUE_PROFILING_ENABLE,
                                      &status));
 
@@ -449,19 +449,6 @@ OCLBase::~OCLBase()
     for (size_t i = 0; i < contexts.size(); i++)
         if (contexts[i])
             checkFail(clReleaseContext(contexts[i]), "release context ", i);
-}
-
-bool
-OCLBase::setOutOfOrder(const size_t device_index,
-                       const bool out_of_order)
-{
-    return ! checkFail(
-        clSetCommandQueueProperty(queues[device_index],
-                                  CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE,
-                                  out_of_order ? CL_TRUE : CL_FALSE,
-                                  NULL),
-        (out_of_order ? "set command queue out of order"
-                      : "set command queue in order"));
 }
 
 cl_device_id&

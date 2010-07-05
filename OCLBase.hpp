@@ -68,10 +68,6 @@ public:
     OCLBase();
     ~OCLBase();
 
-    // default is in-order command queues, use this for out of order
-    bool setOutOfOrder(const size_t device_index,
-                       const bool out_of_order = true);
-
     cl_device_id&     getDevice(const size_t);
     cl_context&       getContext(const size_t);
     cl_command_queue& getQueue(const size_t);

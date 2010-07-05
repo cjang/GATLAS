@@ -65,13 +65,5 @@ int main(int argc, char *argv[])
     OCLApp oclApp(oclBase, devidx);
     oclApp.print();
 
-    if (oclApp.setOutOfOrder())
-        cout << "set command queue to out of order" << endl;
-    else
-    {
-        cerr << "failed to set command queue to out of order (expected)"
-             << endl;
-    }
-
     return 0;
 }

@@ -313,9 +313,6 @@ public:
                          // out of order execution so queues are
                          // inherently serialized anyway
 
-    // out of order execution for command queue
-    bool setOutOfOrder();
-
     // return time of: enqueue, submit, start, end
     std::vector<unsigned long> profileEvent(const size_t event_index);
 

@@ -1197,12 +1197,6 @@ OCLApp::finish() const
                        "finish queue ", device_index);
 }
 
-bool
-OCLApp::setOutOfOrder()
-{
-    return oclBase.setOutOfOrder(device_index);
-}
-
 vector<unsigned long>
 OCLApp::profileEvent(const size_t event_index)
 {
