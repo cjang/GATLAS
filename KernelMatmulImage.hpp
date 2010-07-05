@@ -41,8 +41,8 @@ class KernelMatmulImage : public KernelBaseMatmul,
     scalar *_paranoidC;
 
 public:
-    KernelMatmulImage(const bool GEMM)
-        : KernelBaseMatmul(GEMM),
+    KernelMatmulImage()
+        : KernelBaseMatmul(),
           MatmulParamInlineMNK(getExtraParameter()),
           MatmulParamLoopOrder(getExtraParameter()),
           MatmulParamGlobalID(getExtraParameter()),

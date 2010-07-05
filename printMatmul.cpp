@@ -157,7 +157,7 @@ int main(int argc, char *argv[])
     OCLApp oclApp(oclBase, device_index);
 
     // OpenCL parameterized kernel generator class
-    KERNEL_CLASS_MACRO kernel( GEMM_MACRO );
+    KERNEL_CLASS_MACRO kernel;
 
     Bench(oclApp, kernel);
 
@@ -177,6 +177,7 @@ int main(int argc, char *argv[])
     }
 
     // matrix dimensions, outer and inner blocking, extra parameters
+    kernel.setGeneralizedMatmul( GEMM_MACRO );
     kernel.setMatrixDimensions(M, N, K);
     kernel.setDataLayout(transposeA, transposeB);
     kernel.setWorkGroup(groupSize);

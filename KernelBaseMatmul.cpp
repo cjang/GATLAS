@@ -215,23 +215,31 @@ bool MatmulAttrAutoVec::getUseAttrAutoVec() const { return _useAttrAutoVec; }
 ////////////////////////////////////////
 // MatmulGeneralized
 
-MatmulGeneralized::MatmulGeneralized(const bool SGEMM)
-    : _generalizedMatmul(SGEMM)
+MatmulGeneralized::MatmulGeneralized()
+    : _generalizedMatmul(false),
+      _gemmChanged(false)
 { }
+
+void MatmulGeneralized::setGeneralizedMatmul(const bool GEMM) {
+    _gemmChanged = GEMM != _generalizedMatmul;
+    _generalizedMatmul = GEMM;
+}
+
+bool MatmulGeneralized::gemmChanged() const { return _gemmChanged; }
 
 bool MatmulGeneralized::generalizedMatmul() const { return _generalizedMatmul; }
 
 ////////////////////////////////////////
 // KernelBaseMatmul
 
-KernelBaseMatmul::KernelBaseMatmul(const bool GEMM)
+KernelBaseMatmul::KernelBaseMatmul()
     : MatmulMatrixDimensions(),
       MatmulDataLayout(),
       MatmulWorkGroup(),
       MatmulInnerBlocking(),
       MatmulExtraParameter(),
       MatmulAttrAutoVec(),
-      MatmulGeneralized(GEMM)
+      MatmulGeneralized()
 { }
 
 KernelBaseMatmul::~KernelBaseMatmul() { }
@@ -268,6 +276,9 @@ bool KernelBaseMatmul::getParams(vector<size_t>& params) const {
     if (rc = validParams()) {
         params.clear();
 
+        // GEMM or pure matrix multiply only
+        params.push_back(generalizedMatmul());
+
         // matrix dimensions
         params.push_back(dimM());
         params.push_back(dimN());
@@ -293,6 +304,10 @@ bool KernelBaseMatmul::getParams(vector<size_t>& params) const {
 
 void KernelBaseMatmul::setParams(const vector<size_t>& params) {
     size_t index = 0;
+
+    // GEMM or pure matrix multiply only
+    const size_t GEMM = params[index++];
+    setGeneralizedMatmul(GEMM);
 
     // matrix dimensions
     const size_t M = params[index++];

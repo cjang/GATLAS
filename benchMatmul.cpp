@@ -182,6 +182,7 @@ vector< vector<size_t> > getParams(OCLApp& oclApp,
     vector< vector<size_t> > pargs;
     vector<size_t> a;
 
+    kernel.setGeneralizedMatmul( GEMM_MACRO );
     kernel.setMatrixDimensions(M, N, K);
     kernel.setDataLayout(transposeA, transposeB);
     if (-1 != groupSize) kernel.setWorkGroup(groupSize);
@@ -403,7 +404,7 @@ int main(int argc, char *argv[])
     OCLApp oclApp(oclBase, device_index);
 
     // kernel generator, journal and benchmark object
-    KERNEL_CLASS_MACRO < SCALAR_MACRO , VECTOR_LENGTH_MACRO > kernel( GEMM_MACRO );
+    KERNEL_CLASS_MACRO < SCALAR_MACRO , VECTOR_LENGTH_MACRO > kernel;
     Journal journal(journalFile);
     Bench bench(oclApp, kernel, journal);
 

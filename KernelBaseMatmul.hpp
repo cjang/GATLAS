@@ -235,11 +235,18 @@ public:
 
 class MatmulGeneralized
 {
-    // GEMM if true, pure matrix multiply if false
-    const bool _generalizedMatmul;
+    // GEMM if true, pure matrix multiply if false (default)
+    bool _generalizedMatmul;
+
+    // buffers are different for matrix multiply and GEMM
+    bool _gemmChanged;
 
 public:
-    MatmulGeneralized(const bool GEMM);
+    MatmulGeneralized();
+
+    void setGeneralizedMatmul(const bool GEMM);
+
+    bool gemmChanged() const;
 
     bool generalizedMatmul() const;
 };
@@ -261,6 +268,7 @@ public:
     using MatmulAttrAutoVec::setUseAttrAutoVec;
 
     // parameters for kernel code generation
+    using MatmulGeneralized::setGeneralizedMatmul;
     using MatmulMatrixDimensions::setMatrixDimensions;
     using MatmulDataLayout::setDataLayout;
     using MatmulWorkGroup::setWorkGroup;
@@ -290,7 +298,7 @@ public:
     }
 
 protected:
-    KernelBaseMatmul(const bool GEMM);
+    KernelBaseMatmul();
     virtual ~KernelBaseMatmul();
 
     // inner product accumulation

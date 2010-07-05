@@ -40,8 +40,8 @@ class KernelMatmulBuffer : public KernelBaseMatmul,
     scalar *_paranoidC;
 
 public:
-    KernelMatmulBuffer(const bool GEMM)
-        : KernelBaseMatmul(GEMM),
+    KernelMatmulBuffer()
+        : KernelBaseMatmul(),
           MatmulParamInlineMNK(getExtraParameter()),
           MatmulParamLoopOrder(getExtraParameter()),
           _handleA(-1),
