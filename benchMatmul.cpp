@@ -28,7 +28,6 @@
 #include "GatlasAppUtil.hpp"
 #include "GatlasBenchmark.hpp"
 
-#include "KernelProbeAutoVectorize.hpp"
 #include "KernelFile.hpp"
 
 #include "using_namespace"
