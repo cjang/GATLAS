@@ -56,6 +56,23 @@ namespace AppUtil
                      const bool dummyRun = false,
                      const bool printDebug = false);
 
+    // return number of benchmarked kernels that were ok
+    size_t benchLoop(const size_t trialNumber,
+                     KernelInterface& kernel,
+                     Bench& bench,
+                     Journal& journal,
+                     const std::vector< std::vector<size_t> >& pargs,
+                     std::vector<bool>& pargsOk,
+                     std::vector<size_t>& pargsTime,
+                     std::vector<size_t>& pargsFlops,
+                     std::vector<double>& pargsAverage,
+                     std::vector<double>& pargsVariance,
+                     std::vector< std::vector<size_t> >& pargsExtraDetail,
+                     const bool busTransferToDevice,
+                     const bool busTransferFromDevice,
+                     const bool dummyRun = false,
+                     const bool printDebug = false);
+
     // keep top N fastest times
     void markBench(const size_t topN,
                    std::vector<bool>& pargsOk,

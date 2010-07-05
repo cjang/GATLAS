@@ -15,15 +15,119 @@
 //    You should have received a copy of the GNU Lesser General Public License
 //    along with GATLAS.  If not, see <http://www.gnu.org/licenses/>.
 
+#include <fstream>
+#include <iostream>
+#include <ostream>
+#include <sstream>
+#include <stdlib.h>
+#include <sys/time.h>
+#include "GatlasType.hpp"
+#include "GatlasQualifier.hpp"
+#include "GatlasCodeText.hpp"
+
 #include "GatlasBenchmark.hpp"
 
 #include "declare_namespace"
 
 using namespace std;
 
+////////////////////////////////////////
+// KernelInterface
+
 ostream& operator<< (ostream& os, const KernelInterface& k) {
     return k.print(os);
 }
+
+////////////////////////////////////////
+// Journal
+
+string Journal::toString(const vector<size_t>& params) const {
+    stringstream ss;
+    for (size_t i = 0; i < params.size(); i++)
+        ss << params[i] << "_";
+    return ss.str();
+}
+
+vector<size_t> Journal::toParams(const string& key) const {
+    vector<size_t> params;
+    size_t valueIndex = 0, value;
+    while (valueIndex < key.size()) {
+        const size_t delimIndex = key.find('_', valueIndex);
+        stringstream ss(key.substr(valueIndex, delimIndex - valueIndex));
+        ss >> value;
+        params.push_back(value);
+        valueIndex = delimIndex + 1;
+    }
+    return params;
+}
+
+Journal::Journal(const std::string& journalFile)
+    : _journalFile(journalFile)
+{ }
+
+bool Journal::loadMemo() {
+    ifstream journal(_journalFile.c_str());
+    if (journal.is_open()) {
+        string key;
+        int value;
+        while (! journal.eof() && (journal >> key >> value)) {
+            if (value < 0)
+                _memoRunState[key] = value;
+            else
+                _memoTime[key] = value;
+        }
+        return true;
+    } else {
+        return false;
+    }
+}
+
+int Journal::memoRunState(const vector<size_t>& params) {
+    const string key = toString(params);
+    if (0 == _memoRunState.count(key))
+        return MISSING; // not in memo
+    else
+        return _memoRunState[key];
+}
+
+size_t Journal::memoTime(const vector<size_t>& params) {
+    const string key = toString(params);
+    if (0 == _memoTime.count(key))
+        return 0; // not in memo
+    else
+        return _memoTime[key];
+}
+
+bool Journal::takeMemo(const std::vector<size_t>& params, const int value) const {
+    ofstream journal(_journalFile.c_str(), ios::app);
+    if (journal.is_open()) {
+        journal << toString(params) << "\t" << value << endl;
+        return true;
+    } else {
+        return false;
+    }
+}
+
+////////////////////////////////////////
+// Bench
+
+Bench::Bench(OCLApp& oclApp, KernelInterface& kernel, const bool printStatus)
+    : _oclApp(oclApp),
+      _kernel(kernel),
+      _journal(NULL),
+      _kernelHandle(-1),
+      _printStatus(printStatus)
+{ }
+
+Bench::Bench(OCLApp& oclApp, KernelInterface& kernel, Journal& journal, const bool printStatus)
+    : _oclApp(oclApp),
+      _kernel(kernel),
+      _journal(&journal),
+      _kernelHandle(-1),
+      _printStatus(printStatus)
+{ }
+
+bool Bench::printStatus() const { return _printStatus; }
 
 bool Bench::rebuildProgram() {
     // program source
@@ -42,15 +146,6 @@ bool Bench::rebuildProgram() {
     }
 }
 
-Bench::Bench(OCLApp& oclApp, KernelInterface& kernel, const bool printStatus)
-    : _oclApp(oclApp),
-      _kernel(kernel),
-      _kernelHandle(-1),
-      _printStatus(printStatus)
-{ }
-
-bool Bench::printStatus() const { return _printStatus; }
-
 // returns elapsed time in microseconds, 0 if error
 size_t Bench::run(const size_t numTrials,
                   const vector<size_t>& args,
@@ -63,10 +158,14 @@ size_t Bench::run(const size_t numTrials,
 
     if (_printStatus && printDebug) cerr << _kernel << endl;
 
+    if (_journal) _journal->takeMemo(args, Journal::BUILD_IN_PROGRESS);
+
     // kernels change depending on arguments
     if (_printStatus) cerr << "rebuilding kernel...";
     if (! rebuildProgram()) return 0; // build program failed
     if (_printStatus) cerr << " done\t";
+
+    if (_journal) _journal->takeMemo(args, Journal::BUILD_OK);
 
     // set kernel arguments (exclude PCIe bus transfer cost)
     if (!busTransferToDevice)
@@ -75,6 +174,8 @@ size_t Bench::run(const size_t numTrials,
     // work item dimensions
     const vector<size_t> globalDims = _kernel.globalWorkItems();
     const vector<size_t> localDims = _kernel.localWorkItems();
+
+    if (_journal) _journal->takeMemo(args, Journal::RUN_IN_PROGRESS);
 
     // start gettimeofday timer
     struct timeval start_time;
@@ -149,6 +250,11 @@ size_t Bench::run(const size_t numTrials,
     // final cleanup
     if (!_oclApp.wait()) {
         if (_printStatus) cerr << "error: clean up wait events" << endl;
+    }
+
+    if (_journal) {
+        _journal->takeMemo(args, Journal::RUN_OK);
+        _journal->takeMemo(args, isOk ? elapsed_time : 0);
     }
 
     return isOk ? elapsed_time : 0;

@@ -172,6 +172,111 @@ size_t benchLoop(const size_t trialNumber,
     return goodKernelCount;
 }
 
+size_t benchLoop(const size_t trialNumber,
+                 KernelInterface& kernel,
+                 Bench& bench,
+                 Journal& journal,
+                 const vector< vector<size_t> >& pargs,
+                 vector<bool>& pargsOk,
+                 vector<size_t>& pargsTime,
+                 vector<size_t>& pargsFlops,
+                 vector<double>& pargsAverage,
+                 vector<double>& pargsVariance,
+                 vector< vector<size_t> >& pargsExtraDetail,
+                 const bool busTransferToDevice,
+                 const bool busTransferFromDevice,
+                 const bool dummyRun,
+                 const bool printDebug)
+{
+    const bool printStatus = bench.printStatus();
+    size_t goodKernelCount = 0;
+
+    bool needDummyRun = dummyRun;
+
+    // main loop
+    for (size_t j = 0; j < pargs.size(); j++) {
+        const vector<size_t>& args = pargs[j];
+        if (pargsOk[j]) {
+
+            // check memo
+            const size_t memoState = journal.memoRunState(args);
+
+            if (needDummyRun && Journal::MISSING == memoState) {
+                cout << "[dummy run] ";
+                bench.run(1, args, busTransferToDevice, busTransferFromDevice, printDebug);
+                cout << endl;
+                needDummyRun = false;
+            }
+
+            if (printStatus) cout << "[trial " << trialNumber << "] ";
+
+            size_t microsecs;
+            if (Journal::MISSING == memoState) {
+                microsecs = bench.run(1, args, busTransferToDevice, busTransferFromDevice, printDebug);
+            } else if (Journal::RUN_OK == memoState) {
+                microsecs = journal.memoTime(args);
+                kernel.setParams(args);
+            } else { // these kernel parameters cause seg fault or hang
+                if (printStatus) cout << "bad";
+                microsecs = 0;
+                kernel.setParams(args);
+            }
+
+            const vector<size_t>& extra = pargsExtraDetail[j] = kernel.extraParamDetail();
+
+            if (0 == microsecs) {
+                if (printStatus) {
+                    cout << "\t";
+                    for (size_t i = 0; i < args.size(); i++) {
+                        cout << args[i];
+                        if (i != args.size() - 1) cout << " ";
+                    }
+                    cout << "\t(";
+                    for (size_t i = 0; i < extra.size(); i++) {
+                        cout << extra[i];
+                        if (i != extra.size() -1) cout << " ";
+                    }
+                    cout << ")" << endl;
+                }
+                pargsOk[j] = false;
+                continue;
+            }
+
+            goodKernelCount++;
+
+            const size_t numflops = kernel.numberFlops();
+            pargsTime[j] += microsecs;
+            pargsFlops[j] += numflops;
+
+            // single pass mean and variance
+            const double avg = static_cast<double>(numflops) / microsecs / 1000;
+            if (0 == trialNumber) {
+                pargsAverage[j] = avg;
+            } else {
+                const double delta = avg - pargsAverage[j];
+                pargsAverage[j] += (static_cast<double>(1) / (trialNumber + 1)) * delta;
+                pargsVariance[j] += (static_cast<double>(trialNumber) / (trialNumber + 1)) * delta * delta;
+            }
+
+            if (printStatus) {
+                cout << microsecs << "\t";
+                for (size_t i = 0; i < args.size(); i++) {
+                    cout << args[i];
+                    if (i != args.size() - 1) cout << " ";
+                }
+                cout << "\t(";
+                for (size_t i = 0; i < extra.size(); i++) {
+                    cout << extra[i];
+                    if (i != extra.size() -1) cout << " ";
+                }
+                cout << ")" << endl;
+            }
+        }
+    }
+
+    return goodKernelCount;
+}
+
 void markBench(const size_t topN,
                vector<bool>& pargsOk,
                const vector<size_t>& pargsTime)

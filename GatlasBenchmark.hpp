@@ -18,16 +18,9 @@
 //    You should have received a copy of the GNU Lesser General Public License
 //    along with GATLAS.  If not, see <http://www.gnu.org/licenses/>.
 
-#include <iostream>
-#include <ostream>
-#include <sstream>
+#include <map>
 #include <string>
 #include <vector>
-#include <stdlib.h>
-#include <sys/time.h>
-#include "GatlasType.hpp"
-#include "GatlasQualifier.hpp"
-#include "GatlasCodeText.hpp"
 #include "OCLApp.hpp"
 
 #include "declare_namespace"
@@ -66,10 +59,41 @@ struct KernelInterface
 
 std::ostream& operator<< (std::ostream& os, const KernelInterface& k);
 
+class Journal
+{
+    const std::string _journalFile;
+
+    std::map<std::string, int>    _memoRunState; // contains all param keys
+    std::map<std::string, size_t> _memoTime;     // only contains param keys in state KERNEL_OK
+
+    std::string         toString(const std::vector<size_t>& params) const;
+    std::vector<size_t> toParams(const std::string& key) const;
+
+public:
+    enum RunState { MISSING           = 0,
+                    BUILD_IN_PROGRESS = -1,
+                    BUILD_OK          = -2,
+                    RUN_IN_PROGRESS   = -3,
+                    RUN_OK            = -4 };
+
+    Journal(const std::string& journalFile);
+
+    // load records from memo file
+    bool loadMemo();
+
+    // read from memo
+    int    memoRunState(const std::vector<size_t>& params);
+    size_t memoTime(const std::vector<size_t>& params);
+
+    // write to memo file
+    bool takeMemo(const std::vector<size_t>& params, const int value) const;
+};
+
 class Bench
 {
     OCLApp&                  _oclApp;
     KernelInterface&         _kernel;
+    Journal*                 _journal;
     std::vector<std::string> _programSource;
     int                      _kernelHandle;
 
@@ -80,6 +104,7 @@ class Bench
 public:
 
     Bench(OCLApp& oclApp, KernelInterface& kernel, const bool printStatus = true);
+    Bench(OCLApp& oclApp, KernelInterface& kernel, Journal& journal, const bool printStatus = true);
 
     bool printStatus() const;
 

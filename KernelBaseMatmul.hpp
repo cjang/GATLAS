@@ -24,6 +24,7 @@
 #include "OCLApp.hpp"
 #include "OCLAppUtil.hpp"
 #include "GatlasBenchmark.hpp"
+#include "GatlasCodeText.hpp"
 
 #include "declare_namespace"
 

@@ -15,6 +15,7 @@
 //    You should have received a copy of the GNU Lesser General Public License
 //    along with GATLAS.  If not, see <http://www.gnu.org/licenses/>.
 
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <set>
@@ -36,6 +37,7 @@ using namespace std;
 
 bool parseOpts(int argc, char *argv[],
                string& device,
+               string& journalFile,
                int& M,
                int& N,
                int& K,
@@ -53,16 +55,17 @@ bool parseOpts(int argc, char *argv[],
                bool& vectorAttributeHint,
                bool& printDebug) {
     int opt;
-    while ((opt = getopt(argc, argv, "heabsrpvzd:m:n:k:g:y:x:t:w:")) != -1) {
+    while ((opt = getopt(argc, argv, "heabsrpvzd:j:m:n:k:g:y:x:t:w:")) != -1) {
         switch (opt) {
             case ('h') :
                 cerr << "usage: " << argv[0]
-                     << " -d cpu|gpu|acc|cpuX|gpuX|accX -n N [-m M -k K]"
+                     << " -d cpu|gpu|acc|cpuX|gpuX|accX -j journalFile -n N [-m M -k K]"
                         " [-g groupSize [-y blockHeight [-x extraParam]]]"
                         " [-t numberTrials]"
                         " [-w topN]"
                         " [-e] [-a] [-b] [-s] [-r] [-p] [-v] [-z] [-h]" << endl
                      << "\t-d cpu, gpu or accelerator device, optional X is the device number" << endl
+                     << "\t-j journal file" << endl
                      << "\t-m matrix dimension M" << endl
                      << "\t-n matrix dimension N" << endl
                      << "\t-k matrix dimension K" << endl
@@ -79,9 +82,11 @@ bool parseOpts(int argc, char *argv[],
                      << "\t-p paranoid output matrix check (default no)" << endl
                      << "\t-v disable kernel vector attribute hint (default enabled)" << endl
                      << "\t-z print matrix output (default no)" << endl
-                     << "\t-h help" << endl;
+                     << "\t-h help" << endl
+                     << "***DONE***" << endl; // needed for wrapper retry script
                 exit(1);
             case ('d') : device = optarg; break;
+            case ('j') : journalFile = optarg; break;
             case ('m') : M = atoi(optarg); break;
             case ('n') : N = atoi(optarg); break;
             case ('k') : K = atoi(optarg); break;
@@ -106,6 +111,10 @@ bool parseOpts(int argc, char *argv[],
     bool rc = true;
     if (0 != device.find("cpu") && 0 != device.find("gpu") & 0 != device.find("acc")) {
         cerr << "error: invalid device " << device << endl;
+        rc = false;
+    }
+    if (journalFile.empty()) {
+        cerr << "error: journal file must be specified" << endl;
         rc = false;
     }
     if (-1 == N) {
@@ -256,6 +265,7 @@ vector< vector<size_t> > getParams(OCLApp& oclApp,
 // return number of benchmarked kernels that were ok
 size_t mainLoop(KernelInterface& kernel,
                 Bench& bench,
+                Journal& journal,
                 const vector< vector<size_t> >& pargs,
                 vector<bool>& pargsOk,
                 vector<double>& pargsAverage,
@@ -291,6 +301,7 @@ size_t mainLoop(KernelInterface& kernel,
         goodKernelCount = AppUtil::benchLoop(k,
                                              kernel,
                                              bench,
+                                             journal,
                                              pargs,
                                              pargsOk,
                                              pargsTime,
@@ -323,6 +334,7 @@ size_t mainLoop(KernelInterface& kernel,
 
 size_t mainLoop(KernelInterface& kernel,
                 Bench& bench,
+                Journal& journal,
                 const vector< vector<size_t> >& pargs,
                 const size_t numberTrials,
                 const size_t topN,
@@ -341,6 +353,7 @@ size_t mainLoop(KernelInterface& kernel,
 
     return mainLoop(kernel,
                     bench,
+                    journal,
                     pargs,
                     pargsOk,
                     pargsAverage,
@@ -355,6 +368,7 @@ size_t mainLoop(KernelInterface& kernel,
 int main(int argc, char *argv[])
 {
     string device = "<unspecified>";
+    string journalFile;
     int M = -1, N = -1, K = -1;
     int groupSize = -1, blockHeight = -1, extraParam = -1;
     size_t numberTrials = 1;
@@ -368,6 +382,7 @@ int main(int argc, char *argv[])
 
     if (!parseOpts(argc, argv,
                    device,
+                   journalFile,
                    M, N, K,
                    groupSize, blockHeight, extraParam,
                    numberTrials,
@@ -377,15 +392,20 @@ int main(int argc, char *argv[])
                    busTransferToDevice, busTransferFromDevice,
                    paranoidCheck,
                    vectorAttributeHint,
-                   printDebug))
+                   printDebug)) {
+        cerr << "***DONE***" << endl; // needed for wrapper retry script
         exit(1);
+    }
 
+    // initialize OpenCL
     OCLBase oclBase;
     const size_t device_index = AppUtil::getDeviceIndex(oclBase, device);
     OCLApp oclApp(oclBase, device_index);
 
+    // kernel generator, journal and benchmark object
     KERNEL_CLASS_MACRO < SCALAR_MACRO , VECTOR_LENGTH_MACRO > kernel( GEMM_MACRO );
-    Bench bench(oclApp, kernel);
+    Journal journal(journalFile);
+    Bench bench(oclApp, kernel, journal);
 
     // kernel vector attribute hint?
     kernel.setUseAttrAutoVec(vectorAttributeHint);
@@ -405,8 +425,10 @@ int main(int argc, char *argv[])
         pargsAverage.push_back(0);
     }
 
+    journal.loadMemo();
     mainLoop(kernel,
              bench,
+             journal,
              pargs,
              pargsOk,
              pargsAverage,
@@ -417,7 +439,11 @@ int main(int argc, char *argv[])
              printDebug,
              paranoidCheck);
 
-    if (! nestedOptimization) return 0; // one full pass only
+    if (! nestedOptimization) {
+        // useful for parent process manager to know not to respawn process
+        cout << "***DONE***" << endl;
+        return 0; // one full pass only
+    }
 
     // nested optimization needs second pass
     cout << endl << "*** nested optimization second pass ***" << endl;
@@ -435,8 +461,10 @@ int main(int argc, char *argv[])
                       bestGroupSize, bestBlockHeight, extraParam,
                       -1);
 
+    journal.loadMemo();
     mainLoop(kernel,
              bench,
+             journal,
              pargs,
              numberTrials,
              topN,
@@ -444,6 +472,9 @@ int main(int argc, char *argv[])
              busTransferFromDevice,
              printDebug,
              paranoidCheck);
+
+    // useful for parent process manager to know not to respawn process
+    cout << "***DONE***" << endl;
 
     return 0;
 }

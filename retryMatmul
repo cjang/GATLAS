@@ -1,0 +1,12 @@
+#!/bin/sh
+
+OUTFILE=$USER$RANDOM
+EXE=`echo $0 | sed -e 's/\.retry//'`
+
+cp /dev/null $OUTFILE
+
+while [ `grep '***DONE***' $OUTFILE | wc -l` -ne 1 ]; do
+  $EXE $@ 2>&1 | tee $OUTFILE
+done
+
+rm $OUTFILE

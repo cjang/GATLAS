@@ -20,6 +20,9 @@
 
 #include "OCLAppUtil.hpp"
 #include "GatlasBenchmark.hpp"
+#include "GatlasCodeText.hpp"
+#include "GatlasQualifier.hpp"
+#include "GatlasType.hpp"
 
 #include "declare_namespace"
 

@@ -56,10 +56,16 @@ EXECUTABLES = \
 	pmm_buffer pgemm_buffer pmm_image pgemm_image \
 	bmm_buffer bgemm_buffer bmm_image bgemm_image
 
+SYMLINKS = \
+	bmm_buffer.retry \
+	bmm_image.retry \
+	bgemm_buffer.retry \
+	bgemm_image.retry
+
 
 
 # default target for all binaries
-binaries : libgatlas.a $(EXECUTABLES)
+binaries : libgatlas.a $(EXECUTABLES) $(SYMLINKS)
 
 
 
@@ -220,6 +226,18 @@ bgemm_image : bgemm_image.o libgatlas.a
 
 
 
+# support for wrapper retry script (handles OpenCL compiler seg faults)
+bmm_buffer.retry :
+	ln -s retryMatmul $@
+bmm_image.retry :
+	ln -s retryMatmul $@
+bgemm_buffer.retry :
+	ln -s retryMatmul $@
+bgemm_image.retry :
+	ln -s retryMatmul $@
+
+
+
 # documentation, needs GraphViz
 matmulOverview.svg : matmulOverview.dpp
 	./dotpp.pl $< | dot -Tsvg > $@
@@ -227,7 +245,7 @@ matmulOverview.svg : matmulOverview.dpp
 
 
 clean :
-	rm -f *.o KernelFile.hpp libgatlas.a $(EXECUTABLES)
+	rm -f *.o KernelFile.hpp libgatlas.a $(EXECUTABLES) $(SYMLINKS)
 
 # do not want to accidentally delete benchmark data with make clean
 veryclean : clean

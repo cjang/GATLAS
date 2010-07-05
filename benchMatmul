@@ -25,7 +25,7 @@ case $# in
   8) DEVICETYPE=$1 ; OUTPUTDIR=$2 ; CALCTYPE=$3 ; MEMTYPE=$4 ; BUSXFER=$5 ; MATSIZE_START=$6 ; MATSIZE_STOP=$7 ; MATSIZE_STEP=$8 ;;
   *) echo usage: $0 device output_directory mm\|gemm buffer\|image \[none\|to\|from\|tofrom\] matrix_size_start matrix_size_stop matrix_size_step
      echo
-     echo "device              - cpu[X], gpu[X] where X = 0, 1,..."
+     echo "device              - cpu[X], gpu[X], acc[X] where X = 0, 1,..."
      echo "mm|gemm             - matrix multiply or general matrix multiply"
      echo "buffer|image        - memory buffers or images"
      echo "none|to|from|tofrom - PCIe bus data transfer between host and device (default is none)"
@@ -92,15 +92,20 @@ function bench_impl() {
   if [ -f $OUTFILE ]; then
     echo -n skip
   else
-    ./b${CALCTYPE}_$MEMTYPE \
-      -d $DEVICETYPE \
-      -n $matrixsize \
-      -t $NUMTRIALS \
-      -w $TOPN \
-      -e \
-      $extraflags \
-      $BUSXFEROPT \
-      > $OUTFILE 2>&1
+    cp /dev/null $OUTFILE
+    cp /dev/null journalfile
+    while [ `grep '***DONE***' $OUTFILE | wc -l` -ne 1 ]; do
+      ./b${CALCTYPE}_$MEMTYPE \
+        -d $DEVICETYPE \
+        -j journalfile \
+        -n $matrixsize \
+        -t $NUMTRIALS \
+        -w $TOPN \
+        -e \
+        $extraflags \
+        $BUSXFEROPT \
+        > $OUTFILE 2>&1
+    done
     echo -n .
   fi
 }
