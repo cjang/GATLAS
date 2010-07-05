@@ -58,6 +58,8 @@ bool Journal::loadMemo() {
     if (journal.is_open()) {
         string key;
         int value;
+        _memoRunState.clear();
+        _memoTime.clear();
         while (! journal.eof() && (journal >> key >> value)) {
             if (value < 0)
                 _memoRunState[key] = value;
@@ -69,6 +71,28 @@ bool Journal::loadMemo() {
         return false;
     }
 }
+
+int Journal::purgeMemo() {
+    int count = -1;
+    ofstream journal(_journalFile.c_str());
+    if (journal.is_open()) {
+        count = 0;
+        for (map<string, int>::const_iterator iter = _memoRunState.begin();
+             iter != _memoRunState.end();
+             iter++) {
+            const string key = (*iter).first;
+            const int value = (*iter).second;
+            if (0 == _memoTime.count(key)) {
+                // this kernel has no benchmark time so must be bad
+                journal << key << "\t" << value << endl;
+                count++; // increment number of bad kernels
+            }
+        }
+    }
+    return count;
+}
+
+size_t Journal::memoGood() const { return _memoTime.size(); }
 
 int Journal::memoRunState(const KernelInterface& kernel, const vector<size_t>& params) {
     const string key = toString(kernel, params);

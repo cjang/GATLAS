@@ -53,6 +53,7 @@ LIB_OBJECT_CODE = \
 EXECUTABLES = \
 	oclInfo \
 	probeAutoVectorize \
+	purgeJournal \
 	pmm_buffer pgemm_buffer pmm_image pgemm_image \
 	bmm_buffer bgemm_buffer bmm_image bgemm_image
 
@@ -154,6 +155,10 @@ oclInfo : oclInfo.o libgatlas.a
 
 # check if OpenCL platform supports auto vectorize kernel attribute
 probeAutoVectorize : probeAutoVectorize.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS)
+
+# purge journal file
+purgeJournal : purgeJournal.o libgatlas.a
 	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS)
 
 
