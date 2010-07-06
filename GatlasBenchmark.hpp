@@ -63,10 +63,10 @@ class Journal
 {
     const std::string _journalFile;
 
-    std::map<std::string, int>    _memoRunState; // contains all param keys
-    std::map<std::string, size_t> _memoTime;     // only contains param keys in state KERNEL_OK
+    std::map<std::string, int>                  _memoRunState; // contains all param keys
+    std::map<std::string, std::vector<size_t> > _memoTime;     // only contains param keys in state KERNEL_OK
 
-    std::string         toString(const KernelInterface& kernel, const std::vector<size_t>& params) const;
+    std::string toString(const KernelInterface& kernel, const std::vector<size_t>& params) const;
 
 public:
     enum RunState { MISSING           = 0,
@@ -88,7 +88,7 @@ public:
     // read from memo
     size_t memoGood() const; // number of kernels than ran ok (even if check output failed)
     int    memoRunState(const KernelInterface& kernel, const std::vector<size_t>& params);
-    size_t memoTime(const KernelInterface& kernel, const std::vector<size_t>& params);
+    int    memoTime(const KernelInterface& kernel, const std::vector<size_t>& params, const size_t trialNumber);
 
     // write to memo file
     bool takeMemo(const KernelInterface& kernel, const std::vector<size_t>& params, const int value) const;

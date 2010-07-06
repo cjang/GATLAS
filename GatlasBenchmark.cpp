@@ -64,7 +64,7 @@ bool Journal::loadMemo() {
             if (value < 0)
                 _memoRunState[key] = value;
             else
-                _memoTime[key] = value;
+                _memoTime[key].push_back(value);
         }
         return true;
     } else {
@@ -102,12 +102,16 @@ int Journal::memoRunState(const KernelInterface& kernel, const vector<size_t>& p
         return _memoRunState[key];
 }
 
-size_t Journal::memoTime(const KernelInterface& kernel, const vector<size_t>& params) {
+int Journal::memoTime(const KernelInterface& kernel, const vector<size_t>& params, const size_t trialNumber) {
     const string key = toString(kernel, params);
     if (0 == _memoTime.count(key))
-        return 0; // not in memo
-    else
-        return _memoTime[key];
+        return -1; // not in memo
+    else {
+        if (trialNumber < _memoTime[key].size())
+            return _memoTime[key][trialNumber];
+        else
+            return -1; 
+    }
 }
 
 bool Journal::takeMemo(const KernelInterface& kernel, const std::vector<size_t>& params, const int value) const {
