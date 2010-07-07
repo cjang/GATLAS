@@ -24,18 +24,20 @@
 
 using namespace std;
 
-bool parseOpts(int argc, char *argv[], string& journalFile) {
+bool parseOpts(int argc, char *argv[], string& journalFile, bool& deleteTimes) {
     int opt;
-    while ((opt = getopt(argc, argv, "hj:")) != -1) {
+    while ((opt = getopt(argc, argv, "hdj:")) != -1) {
         switch (opt) {
             case ('h') :
                 cerr << "usage: " << argv[0]
                      << " -j journalFile"
-                        " [-h]" << endl
+                        " [-d] [-h]" << endl
                      << "\t-j journal file" << endl
+                     << "\t-d delete benchmark time records for good kernels (default is to keep them)" << endl
                      << "\t-h help" << endl;
                 exit(1);
             case ('j') : journalFile = optarg; break;
+            case ('d') : deleteTimes = true; break;
         }
     }
     // minimal validation of options
@@ -50,19 +52,20 @@ bool parseOpts(int argc, char *argv[], string& journalFile) {
 int main(int argc, char *argv[])
 {
     string journalFile;
+    bool deleteTimes = false;
 
-    if (!parseOpts(argc, argv, journalFile))
+    if (!parseOpts(argc, argv, journalFile, deleteTimes))
         exit(1);
 
     Journal journal(journalFile);
 
     if (journal.loadMemo()) {
         const size_t numGoodKernels = journal.memoGood();
-        const int numBadKernels = journal.purgeMemo();
-        cout << "purged journal file " << journalFile
-             << " of " << numGoodKernels
-             << " good keys, leaving " << numBadKernels
-             << " bad keys"
+        const int numBadKernels = journal.purgeMemo(deleteTimes);
+        cout << "journal file " << journalFile
+             << " has " << numBadKernels << " bad keys, "
+             << (deleteTimes ? "deleted " : "preserved ")
+             << numGoodKernels << " good keys"
              << endl;
     } else {
         cerr << "error: could not load journal file " << journalFile << endl;

@@ -72,7 +72,7 @@ bool Journal::loadMemo() {
     }
 }
 
-int Journal::purgeMemo() {
+int Journal::purgeMemo(const bool deleteTimes) {
     int count = -1;
     ofstream journal(_journalFile.c_str());
     if (journal.is_open()) {
@@ -82,10 +82,22 @@ int Journal::purgeMemo() {
              iter++) {
             const string key = (*iter).first;
             const int value = (*iter).second;
+
+            // always keep records for bad kernels
             if (0 == _memoTime.count(key)) {
                 // this kernel has no benchmark time so must be bad
                 journal << key << "\t" << value << endl;
                 count++; // increment number of bad kernels
+
+            // optionally keep benchmark time records for good kernels
+            } else {
+                if (! deleteTimes) {
+                    journal << key << "\t" << value << endl; // this is always RUN_OK
+                    for (size_t i = 0; i < _memoTime[key].size(); i++) {
+                        const size_t benchtime = _memoTime[key][i];
+                        journal << key << "\t" << benchtime << endl;
+                    }
+                }
             }
         }
     }

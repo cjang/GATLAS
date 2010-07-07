@@ -83,7 +83,7 @@ public:
     // (assumes load memo has been called)
     // remove unnecessary records from memo file (kernel solutions that ran ok; keep only the last record for a key)
     // returns number of bad kernels (either crashed during build or hung while running)
-    int purgeMemo();
+    int purgeMemo(const bool deleteTimes = false);
 
     // read from memo
     size_t memoGood() const; // number of kernels than ran ok (even if check output failed)
