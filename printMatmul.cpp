@@ -119,12 +119,12 @@ bool parseOpts(int argc, char *argv[],
         cerr << "error: work item group size must be a number from 1 to 16 inclusive" << endl;
         rc = false;
     }
-    if (-1 != blockHeight && blockHeight < VL) {
-        cerr << "error: invalid inner blocking height" << endl;
+    if (transposeA && -1 != blockHeight && (0 != blockHeight % VL) ) {
+        cerr << "error: inner blocking height must be multiple of " << VL << " when matrix A is transposed" << endl;
         rc = false;
     }
-    if (transposeA && -1 != blockHeight && blockHeight != VL) {
-        cerr << "error: inner blocking height is fixed to " << VL << " when matrix A is transposed" << endl;
+    if (-1 != blockHeight && blockHeight < VL) {
+        cerr << "error: invalid inner blocking height" << endl;
         rc = false;
     }
 
