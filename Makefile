@@ -54,100 +54,25 @@ EXECUTABLES = \
 	oclInfo \
 	probeAutoVectorize \
 	purgeJournal \
-	pmm_buffer pgemm_buffer pmm_image pgemm_image \
-	bmm_buffer bgemm_buffer bmm_image bgemm_image
-
-SYMLINKS = \
-	bmm_buffer.retry \
-	bmm_image.retry \
-	bgemm_buffer.retry \
-	bgemm_image.retry
-
+	pmm_image pgemm_image \
+	bench_smmbuf1 bench_smmbuf2 bench_smmbuf4 \
+	bench_dmmbuf1 bench_dmmbuf2 bench_dmmbuf4 \
+	bench_sgemmbuf1 bench_sgemmbuf2 bench_sgemmbuf4 \
+	bench_dgemmbuf1 bench_dgemmbuf2 bench_dgemmbuf4 \
+	print_smmbuf1 print_smmbuf2 print_smmbuf4 \
+	print_dmmbuf1 print_dmmbuf2 print_dmmbuf4 \
+	print_sgemmbuf1 print_sgemmbuf2 print_sgemmbuf4 \
+	print_dgemmbuf1 print_dgemmbuf2 print_dgemmbuf4 \
+	bmm_image bgemm_image
 
 
 # default target for all binaries
 binaries : libgatlas.a $(EXECUTABLES) $(SYMLINKS)
 
-
-
-# minimal matrix multiply GPU characterization
-benchdata :
-	mkdir benchdata
-
-benchgemmbuffer : benchdata
-	@echo benchmarking SGEMM using memory buffers
-	@echo warning - this may take a few hours \(two hours on my HD 5870\)
-	./benchMatmul gpu benchdata gemm buffer 1024 5632 256
-	./benchMatmul gpu benchdata gemm buffer 1600 5600 800
-
-benchgemmimage : benchdata
-	@echo benchmarking SGEMM using images
-	@echo warning - this may take a few hours \(about 90 minutes my HD 5870\)
-	./benchMatmul gpu benchdata gemm image 1024 5632 256
-	./benchMatmul gpu benchdata gemm image 1600 5600 800
-
-benchmmbuffer : benchdata
-	@echo benchmarking matrix multiply using memory buffers
-	@echo warning - this may take a few hours \(two hours on my HD 5870\)
-	./benchMatmul gpu benchdata mm buffer 1024 5632 256
-	./benchMatmul gpu benchdata mm buffer 1600 5600 800
-
-benchmmimage : benchdata
-	@echo benchmarking matrix multiply using images
-	@echo warning - this may take a few hours \(about 90 minutes my HD 5870\)
-	./benchMatmul gpu benchdata mm image 1024 5632 256
-	./benchMatmul gpu benchdata mm image 1600 5600 800
-
-benchgemm : benchgemmbuffer benchgemmimage
-benchmm : benchmmbuffer benchmmimage
-
-benchbuffer: benchgemmbuffer benchmmbuffer
-benchimage : benchgemmimage benchmmimage
-
-benchall : benchgemmbuffer benchgemmimage benchmmbuffer benchmmimage
-
-
-
-# assemble benchmark data in tabular spreadsheet form
-chart : benchdata
-	./chartMatmul benchdata gemm > chartgemm.tsv
-	./chartMatmul benchdata mm > chartmm.tsv
-
-
-
-# very detailed GPU characterization with PCIe bus data transfer costs
-fullbenchdata :
-	mkdir fullbenchdata
-
-fullbenchgemmbuffer : fullbenchdata
-	./benchMatmul gpu fullbenchdata gemm buffer 128 5632 64
-	./benchMatmul gpu fullbenchdata gemm buffer to 128 5632 64
-	./benchMatmul gpu fullbenchdata gemm buffer from 128 5632 64
-	./benchMatmul gpu fullbenchdata gemm buffer tofrom 128 5632 64
-	./benchMatmul gpu fullbenchdata gemm buffer 100 5600 100
-	./benchMatmul gpu fullbenchdata gemm buffer to 100 5600 100
-	./benchMatmul gpu fullbenchdata gemm buffer from 100 5600 100
-	./benchMatmul gpu fullbenchdata gemm buffer tofrom 100 5600 100
-
-fullbenchgemmimage : fullbenchdata
-	./benchMatmul gpu fullbenchdata gemm image 128 5632 64
-	./benchMatmul gpu fullbenchdata gemm image to 128 5632 64
-	./benchMatmul gpu fullbenchdata gemm image from 128 5632 64
-	./benchMatmul gpu fullbenchdata gemm image tofrom 128 5632 64
-	./benchMatmul gpu fullbenchdata gemm image 100 5600 100
-	./benchMatmul gpu fullbenchdata gemm image to 100 5600 100
-	./benchMatmul gpu fullbenchdata gemm image from 100 5600 100
-	./benchMatmul gpu fullbenchdata gemm image tofrom 100 5600 100
-
-fullbenchgemm : fullbenchgemmbuffer fullbenchgemmimage
-
-
-
 # archive library
 libgatlas.a : $(LIB_OBJECT_CODE)
 	$(AR) qc $@ $(LIB_OBJECT_CODE)
 	$(RANLIB) $@
-
 
 # OpenCL information utility
 oclInfo : oclInfo.o libgatlas.a
@@ -161,33 +86,16 @@ probeAutoVectorize : probeAutoVectorize.o libgatlas.a
 purgeJournal : purgeJournal.o libgatlas.a
 	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS)
 
-
 # print matrix multiply
-pmm_buffer.o : printMatmul.cpp
-	rm -f KernelFile.hpp
-	ln -s KernelMatmulBuffer.hpp KernelFile.hpp
-	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer<float, 4>" -DGEMM_MACRO="false"
-
-pgemm_buffer.o : printMatmul.cpp
-	rm -f KernelFile.hpp
-	ln -s KernelMatmulBuffer.hpp KernelFile.hpp
-	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer<float, 4>" -DGEMM_MACRO="true"
-
 pmm_image.o : printMatmul.cpp
 	rm -f KernelFile.hpp
 	ln -s KernelMatmulImage.hpp KernelFile.hpp
-	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulImage<float, 4>" -DGEMM_MACRO="false"
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulImage" -DSCALAR_MACRO="float" -DVECTOR_LENGTH_MACRO="4" -DGEMM_MACRO="false"
 
 pgemm_image.o : printMatmul.cpp
 	rm -f KernelFile.hpp
 	ln -s KernelMatmulImage.hpp KernelFile.hpp
-	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulImage<float, 4>" -DGEMM_MACRO="true"
-
-pmm_buffer : pmm_buffer.o libgatlas.a
-	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS)
-
-pgemm_buffer : pgemm_buffer.o libgatlas.a
-	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS)
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulImage" -DSCALAR_MACRO="float" -DVECTOR_LENGTH_MACRO="4" -DGEMM_MACRO="true"
 
 pmm_image : pmm_image.o libgatlas.a
 	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS)
@@ -195,17 +103,117 @@ pmm_image : pmm_image.o libgatlas.a
 pgemm_image : pgemm_image.o libgatlas.a
 	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS)
 
+#
+# matrix multiply using memory buffers
+#
 
-# benchmark matrix multiply
-bmm_buffer.o : benchMatmul.cpp
-	rm -f KernelFile.hpp
-	ln -s KernelMatmulBuffer.hpp KernelFile.hpp
+memory_buffer_kernel_file :
+	rm -f KernelFile.hpp ; ln -s KernelMatmulBuffer.hpp KernelFile.hpp
+
+# matrix multiply only
+
+bench_smmbuf1.o : benchMatmul.cpp memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="float" -DVECTOR_LENGTH_MACRO="1" -DGEMM_MACRO="false" -DMAX_GROUP_SIZE_MACRO="10" -DMAX_BLOCK_HEIGHT_MACRO="10"
+bench_smmbuf2.o : benchMatmul.cpp memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="float" -DVECTOR_LENGTH_MACRO="2" -DGEMM_MACRO="false" -DMAX_GROUP_SIZE_MACRO="10" -DMAX_BLOCK_HEIGHT_MACRO="10"
+bench_smmbuf4.o : benchMatmul.cpp memory_buffer_kernel_file
 	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="float" -DVECTOR_LENGTH_MACRO="4" -DGEMM_MACRO="false" -DMAX_GROUP_SIZE_MACRO="10" -DMAX_BLOCK_HEIGHT_MACRO="10"
+bench_dmmbuf1.o : benchMatmul.cpp memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="double" -DVECTOR_LENGTH_MACRO="1" -DGEMM_MACRO="false" -DMAX_GROUP_SIZE_MACRO="10" -DMAX_BLOCK_HEIGHT_MACRO="10"
+bench_dmmbuf2.o : benchMatmul.cpp memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="double" -DVECTOR_LENGTH_MACRO="2" -DGEMM_MACRO="false" -DMAX_GROUP_SIZE_MACRO="10" -DMAX_BLOCK_HEIGHT_MACRO="10"
+bench_dmmbuf4.o : benchMatmul.cpp memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="double" -DVECTOR_LENGTH_MACRO="4" -DGEMM_MACRO="false" -DMAX_GROUP_SIZE_MACRO="10" -DMAX_BLOCK_HEIGHT_MACRO="10"
+print_smmbuf1.o : printMatmul.cpp  memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="float" -DVECTOR_LENGTH_MACRO="1" -DGEMM_MACRO="false"
+print_smmbuf2.o : printMatmul.cpp  memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="float" -DVECTOR_LENGTH_MACRO="2" -DGEMM_MACRO="false"
+print_smmbuf4.o : printMatmul.cpp  memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="float" -DVECTOR_LENGTH_MACRO="4" -DGEMM_MACRO="false"
+print_dmmbuf1.o : printMatmul.cpp  memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="double" -DVECTOR_LENGTH_MACRO="1" -DGEMM_MACRO="false"
+print_dmmbuf2.o : printMatmul.cpp  memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="double" -DVECTOR_LENGTH_MACRO="2" -DGEMM_MACRO="false"
+print_dmmbuf4.o : printMatmul.cpp  memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="double" -DVECTOR_LENGTH_MACRO="4" -DGEMM_MACRO="false"
 
-bgemm_buffer.o : benchMatmul.cpp
-	rm -f KernelFile.hpp
-	ln -s KernelMatmulBuffer.hpp KernelFile.hpp
+bench_smmbuf1 : bench_smmbuf1.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+bench_smmbuf2 : bench_smmbuf2.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+bench_smmbuf4 : bench_smmbuf4.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+bench_dmmbuf1 : bench_dmmbuf1.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+bench_dmmbuf2 : bench_dmmbuf2.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+bench_dmmbuf4 : bench_dmmbuf4.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+print_smmbuf1 : print_smmbuf1.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+print_smmbuf2 : print_smmbuf2.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+print_smmbuf4 : print_smmbuf4.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+print_dmmbuf1 : print_dmmbuf1.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+print_dmmbuf2 : print_dmmbuf2.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+print_dmmbuf4 : print_dmmbuf4.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+
+# general matrix multiply
+
+bench_sgemmbuf1.o : benchMatmul.cpp memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="float" -DVECTOR_LENGTH_MACRO="1" -DGEMM_MACRO="true" -DMAX_GROUP_SIZE_MACRO="10" -DMAX_BLOCK_HEIGHT_MACRO="10"
+bench_sgemmbuf2.o : benchMatmul.cpp memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="float" -DVECTOR_LENGTH_MACRO="2" -DGEMM_MACRO="true" -DMAX_GROUP_SIZE_MACRO="10" -DMAX_BLOCK_HEIGHT_MACRO="10"
+bench_sgemmbuf4.o : benchMatmul.cpp memory_buffer_kernel_file
 	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="float" -DVECTOR_LENGTH_MACRO="4" -DGEMM_MACRO="true" -DMAX_GROUP_SIZE_MACRO="10" -DMAX_BLOCK_HEIGHT_MACRO="10"
+bench_dgemmbuf1.o : benchMatmul.cpp memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="double" -DVECTOR_LENGTH_MACRO="1" -DGEMM_MACRO="true" -DMAX_GROUP_SIZE_MACRO="10" -DMAX_BLOCK_HEIGHT_MACRO="10"
+bench_dgemmbuf2.o : benchMatmul.cpp memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="double" -DVECTOR_LENGTH_MACRO="2" -DGEMM_MACRO="true" -DMAX_GROUP_SIZE_MACRO="10" -DMAX_BLOCK_HEIGHT_MACRO="10"
+bench_dgemmbuf4.o : benchMatmul.cpp memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="double" -DVECTOR_LENGTH_MACRO="4" -DGEMM_MACRO="true" -DMAX_GROUP_SIZE_MACRO="10" -DMAX_BLOCK_HEIGHT_MACRO="10"
+print_sgemmbuf1.o : printMatmul.cpp memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="float" -DVECTOR_LENGTH_MACRO="1" -DGEMM_MACRO="true"
+print_sgemmbuf2.o : printMatmul.cpp memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="float" -DVECTOR_LENGTH_MACRO="2" -DGEMM_MACRO="true"
+print_sgemmbuf4.o : printMatmul.cpp memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="float" -DVECTOR_LENGTH_MACRO="4" -DGEMM_MACRO="true"
+print_dgemmbuf1.o : printMatmul.cpp memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="double" -DVECTOR_LENGTH_MACRO="1" -DGEMM_MACRO="true"
+print_dgemmbuf2.o : printMatmul.cpp memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="double" -DVECTOR_LENGTH_MACRO="2" -DGEMM_MACRO="true"
+print_dgemmbuf4.o : printMatmul.cpp memory_buffer_kernel_file
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulBuffer" -DSCALAR_MACRO="double" -DVECTOR_LENGTH_MACRO="4" -DGEMM_MACRO="true"
+bench_sgemmbuf1 : bench_sgemmbuf1.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+bench_sgemmbuf2 : bench_sgemmbuf2.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+bench_sgemmbuf4 : bench_sgemmbuf4.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+bench_dgemmbuf1 : bench_dgemmbuf1.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+bench_dgemmbuf2 : bench_dgemmbuf2.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+bench_dgemmbuf4 : bench_dgemmbuf4.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+print_sgemmbuf1 : print_sgemmbuf1.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+print_sgemmbuf2 : print_sgemmbuf2.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+print_sgemmbuf4 : print_sgemmbuf4.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+print_dgemmbuf1 : print_dgemmbuf1.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+print_dgemmbuf2 : print_dgemmbuf2.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+print_dgemmbuf4 : print_dgemmbuf4.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+
+
 
 bmm_image.o : benchMatmul.cpp
 	rm -f KernelFile.hpp
@@ -217,12 +225,6 @@ bgemm_image.o : benchMatmul.cpp
 	ln -s KernelMatmulImage.hpp KernelFile.hpp
 	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(ATI_CFLAGS) $< -o $@ -DKERNEL_CLASS_MACRO="KernelMatmulImage" -DSCALAR_MACRO="float" -DVECTOR_LENGTH_MACRO="4" -DGEMM_MACRO="true" -DMAX_GROUP_SIZE_MACRO="16" -DMAX_BLOCK_HEIGHT_MACRO="12"
 
-bmm_buffer : bmm_buffer.o libgatlas.a
-	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
-
-bgemm_buffer : bgemm_buffer.o libgatlas.a
-	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
-
 bmm_image : bmm_image.o libgatlas.a
 	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
 
@@ -230,30 +232,10 @@ bgemm_image : bgemm_image.o libgatlas.a
 	$(GNU_CXX) -o $@ $< $(ATI_OPENCL_LDFLAGS) $(GATLAS_LDFLAGS) -lm
 
 
-
-# support for wrapper retry script (handles OpenCL compiler seg faults)
-bmm_buffer.retry :
-	ln -s retryMatmul $@
-bmm_image.retry :
-	ln -s retryMatmul $@
-bgemm_buffer.retry :
-	ln -s retryMatmul $@
-bgemm_image.retry :
-	ln -s retryMatmul $@
-
-
-
 # documentation, needs GraphViz
 matmulOverview.svg : matmulOverview.dpp
 	./dotpp.pl $< | dot -Tsvg > $@
 
-
-
 clean :
 	rm -f *.o KernelFile.hpp libgatlas.a $(EXECUTABLES) $(SYMLINKS)
-
-# do not want to accidentally delete benchmark data with make clean
-veryclean : clean
-	rm -rf benchdata
-	rm -rf fullbenchdata
 

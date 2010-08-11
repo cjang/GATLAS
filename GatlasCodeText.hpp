@@ -356,7 +356,9 @@ public:
 
     std::string operator[] (const size_t i) const {
         std::stringstream ss;
-        ss << name() << ".s" << hex(i);
+        ss << name();
+        if (lengthof<T>() != 1)
+            ss << ".s" << hex(i);
         return ss.str();
     }
 };

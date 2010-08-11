@@ -314,17 +314,33 @@ protected:
             const size_t index = j % VECTOR_LENGTH;
             if (transposeB())
                 // At Bt
-                return assign(accum[j][k], MADValue(valA[l + offset][index], valB[k][l], accum[j][k]));
+                return nameof<SCALAR>() == "double"
+                    ? increment(accum[j][k],
+                                ConstantValue<std::string>(valA[l + offset][index]) *
+                                ConstantValue<std::string>(valB[k][l]))
+                    : assign(accum[j][k], MADValue(valA[l + offset][index], valB[k][l], accum[j][k]));
             else
                 // At B
-                return assign(accum[j][k], MADValue(valA[l + offset][index], valB[l][k], accum[j][k]));
+                return nameof<SCALAR>() == "double"
+                    ? increment(accum[j][k],
+                                ConstantValue<std::string>(valA[l + offset][index]) *
+                                ConstantValue<std::string>(valB[l][k]))
+                    : assign(accum[j][k], MADValue(valA[l + offset][index], valB[l][k], accum[j][k]));
         } else {
             if (transposeB())
                 // A Bt
-                return assign(accum[j][k], MADValue(valA[j][l], valB[k][l], accum[j][k]));
+                return nameof<SCALAR>() == "double"
+                    ? increment(accum[j][k],
+                                ConstantValue<std::string>(valA[j][l]) *
+                                ConstantValue<std::string>(valB[k][l]))
+                    : assign(accum[j][k], MADValue(valA[j][l], valB[k][l], accum[j][k]));
             else
                 // A B
-                return assign(accum[j][k], MADValue(valA[j][l], valB[l][k], accum[j][k]));
+                return nameof<SCALAR>() == "double"
+                    ? increment(accum[j][k],
+                                ConstantValue<std::string>(valA[j][l]) *
+                                ConstantValue<std::string>(valB[l][k]))
+                    : assign(accum[j][k], MADValue(valA[j][l], valB[l][k], accum[j][k]));
         }
     }
 

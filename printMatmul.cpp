@@ -27,11 +27,6 @@
 
 using namespace std;
 
-// explicitly vectorized kernels
-typedef float scalar;
-static const size_t VECTOR_LENGTH = 4;
-typedef VecType<scalar, VECTOR_LENGTH> scalarN;
-
 bool parseOpts(int argc, char *argv[],
                int& M,
                int& N,
@@ -74,7 +69,7 @@ bool parseOpts(int argc, char *argv[],
     }
 
     // validate matrix dimensions
-    const size_t VL = VECTOR_LENGTH; // FIXME
+    const size_t VL = VECTOR_LENGTH_MACRO ;
     bool rc = true;
     if (-1 == N) {
         cerr << "error: matrix dimension N must be specified" << endl;
@@ -146,7 +141,7 @@ int main(int argc, char *argv[])
         exit(1);
 
     // OpenCL parameterized kernel generator class
-    KERNEL_CLASS_MACRO kernel;
+    KERNEL_CLASS_MACRO < SCALAR_MACRO , VECTOR_LENGTH_MACRO > kernel;
 
     // kernel vector attribute hint?
     kernel.setUseAttrAutoVec(vectorAttributeHint);
@@ -156,7 +151,7 @@ int main(int argc, char *argv[])
     kernel.setMatrixDimensions(M, N, K);
     kernel.setDataLayout(transposeA, transposeB);
     kernel.setWorkGroup(groupSize);
-    kernel.setInnerBlocking(blockHeight, VECTOR_LENGTH);
+    kernel.setInnerBlocking(blockHeight, VECTOR_LENGTH_MACRO );
     kernel.setExtraParameter(extraParam);
     if (kernel.validParams()) {
 
