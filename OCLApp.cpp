@@ -123,107 +123,6 @@ OCLApp::releaseProgram()
 }
 
 int
-OCLApp::createImageWithPointer(const size_t width,  // pixel dimensions, so multiply by 4 for number of floats
-                               const size_t height, // pixel dimensions
-                               const cl_mem_flags flags,
-                               float *ptr,
-                               bool own_imgptr)
-{
-    // create image
-    cl_image_format image_format;
-    image_format.image_channel_order = CL_RGBA;
-    image_format.image_channel_data_type = CL_FLOAT;
-    cl_int status;
-    const cl_mem image = clCreateImage2D(oclBase.getContext(device_index),
-                                         flags,
-                                         &image_format,
-                                         width,
-                                         height,
-                                         0,
-                                         ptr,
-                                         &status);
-
-    // check for failure
-    if (checkFail(status, "create image ", ptr))
-        return -1;
-
-    // success
-    const int image_index = imgbuffers.size();
-    imgbuffers.push_back(image);
-    imgptrs.push_back(ptr);
-    imgownptrs.push_back(own_imgptr);
-    imgwidth.push_back(width);
-    imgheight.push_back(height);
-
-    return image_index;
-}
-
-int
-OCLApp::createImageAllocMemory(const size_t width,  // pixel dimensions, so multiply by 4 for number of floats
-                               const size_t height, // pixel dimensions
-                               const cl_mem_flags flags,
-                               const size_t ALIGNMENT)
-{
-    float *ptr = alloc_memalign<float>(4*width*height, ALIGNMENT);
-
-    if (!ptr) return -1; // failure, could not allocate aligned memory
-
-    const int index = createImageWithPointer(width, height, flags, ptr);
-    if (-1 == index) free(ptr);
-
-    return index;
-}
-
-int
-OCLApp::createImage(const size_t width,  // pixel dimensions, so multiply by 4 for number of floats
-                    const size_t height, // pixel dimensions
-                    BUFFER_FLAGS mode,
-                    bool pinned)
-{
-    int flags;
-
-    switch (mode)
-    {
-        case (READ) : flags = CL_MEM_READ_ONLY; break;
-        case (WRITE) : flags = CL_MEM_WRITE_ONLY; break;
-        case (READWRITE) : flags = CL_MEM_READ_WRITE; break;
-    }
-
-    if (pinned)
-    {
-        flags |= CL_MEM_ALLOC_HOST_PTR;
-        return createImageWithPointer(width, height, flags, NULL);
-    }
-    else
-    {
-        flags |= CL_MEM_USE_HOST_PTR;
-        return createImageAllocMemory(width, height, flags, 4 * Type<float>::ALIGNMENT);
-    }
-}
-
-int
-OCLApp::createImage(const size_t width,
-                    const size_t height,
-                    BUFFER_FLAGS mode,
-                    float *ptr,
-                    bool pinned)
-{
-    int flags;
-
-    switch (mode)
-    {
-        case (READ) : flags = CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR; break;
-        case (WRITE) : flags = CL_MEM_WRITE_ONLY | CL_MEM_COPY_HOST_PTR; break;
-        case (READWRITE) : flags = CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR; break;
-    }
-
-    if (pinned) flags |= CL_MEM_ALLOC_HOST_PTR;
-
-    // caller maintains ownership of ptr
-    return createImageWithPointer(width, height, flags, ptr, false);
-}
-
-int
 OCLApp::createSampler()
 {
     cl_int status;
@@ -250,12 +149,6 @@ OCLApp::memsetImage(const size_t image_index, const float value)
     memset(static_cast<void*>(imgptrs[image_index]),
            value,
            imgwidth[image_index] * imgheight[image_index] * 4 * sizeof(float));
-}
-
-float*
-OCLApp::imagePtr(const size_t image_index) const
-{
-    return imgptrs[image_index];
 }
 
 OCLApp::OCLApp(OCLBase& ocl_base, const size_t index)

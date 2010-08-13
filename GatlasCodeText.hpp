@@ -22,6 +22,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include "OCLUtil.hpp"
 #include "GatlasFormatting.hpp"
 #include "GatlasOperator.hpp"
 #include "GatlasQualifier.hpp"
@@ -80,6 +81,23 @@ public:
     std::string name() const {
         std::stringstream ss;
         ss << "(" << castto<T>() << ")(" << _value.name() << ")";
+        return ss.str();
+    }
+};
+
+template <typename SCALAR, size_t VECTOR_LENGTH = 1>
+class ReinterpretValue : public Value
+{
+    const Value& _value;
+    const bool _doApply;
+public:
+    ReinterpretValue(const Value& value, const bool doApply = true) : _value(value), _doApply(doApply) { }
+    std::string name() const {
+        std::stringstream ss;
+        if (_doApply)
+            ss << "as_" << nameof<SCALAR, VECTOR_LENGTH>() << "(" << _value.name() << ")";
+        else
+            ss << _value.name();
         return ss.str();
     }
 };
@@ -448,7 +466,8 @@ struct ImageSampler : public Value
     std::string name() const;
 };
 
-// read float4 from a 2D image
+// read float and uint32 quad from a 2D image
+template <typename T>
 class ReadImage : public Value
 {
     const Var< image2d_t >&       _image;
@@ -460,12 +479,26 @@ public:
     ReadImage(const Var< image2d_t >& image,
               const Var< const sampler_t >& sampler,
               const Value& x,
-              const Value& y);
+              const Value& y)
+        : _image(image),
+          _sampler(sampler),
+          _x(x),
+          _y(y)
+    { }
 
-    std::string name() const;
+    std::string name() const {
+        std::stringstream ss;
+        ss << (isfloat<T>() ? "read_imagef(" : "read_imageui(")
+           << _image.name() << ", "
+           << _sampler.name() << ", (int2)("
+           << _x.name() << ", "
+           << _y.name() << "))";
+        return ss.str();
+    }
 };
 
-// write float4 to a 2D image
+// write float and uint32 quad to a 2D image
+template <typename T>
 class WriteImage : public Printable
 {
     const Var< image2d_t >& _image;
@@ -478,9 +511,23 @@ public:
                const Value& x,
                const Value& y,
                const Value& value,
-               Indent& indent = Indent::obj());
+               Indent& indent = Indent::obj())
+        : Printable(indent),
+          _image(image),
+          _x(x),
+          _y(y),
+          _value(value)
+    { }
 
-    std::ostream& print(std::ostream& os) const;
+    std::ostream& print(std::ostream& os) const {
+        return endline(os << _indent
+                          << (isfloat<T>() ? "write_imagef(" : "write_imageui(")
+                          << _image.name() << ", (int2)("
+                          << _x.name() << ", "
+                          << _y.name() << "), "
+                          << _value.name()
+                          << ")");
+    }
 };
 
 ///////////////////////////////////////////////////////////////////////////////

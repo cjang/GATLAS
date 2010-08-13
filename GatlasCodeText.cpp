@@ -391,42 +391,6 @@ std::string ImageSampler::name() const {
     return "CLK_FILTER_NEAREST | CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE";
 }
 
-ReadImage::ReadImage(const Var< image2d_t >& image,
-                     const Var< const sampler_t >& sampler,
-                     const Value& x,
-                     const Value& y)
-    : _image(image),
-      _sampler(sampler),
-      _x(x),
-      _y(y)
-    { }
-
-std::string ReadImage::name() const {
-    std::stringstream ss;
-    ss << "read_imagef(" << _image.name() << ", " << _sampler.name() << ", (int2)(" << _x.name() << ", " << _y.name() << "))";
-    return ss.str();
-}
-
-WriteImage::WriteImage(const Var< image2d_t >& image,
-                       const Value& x,
-                       const Value& y,
-                       const Value& value,
-                       Indent& indent)
-    : Printable(indent),
-      _image(image),
-      _x(x),
-      _y(y),
-      _value(value)
-    { }
-
-std::ostream& WriteImage::print(std::ostream& os) const {
-    return endline(os << _indent
-                      << "write_imagef(" << _image.name()
-                                         << ", (int2)(" << _x.name() << ", " << _y.name() << "), "
-                                         << _value.name()
-                                         << ")");
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 // declaring, assigning and incrementing variables
 

@@ -69,15 +69,15 @@ class OCLApp
                                                       const cl_mem_flags,
                                                       const size_t ALIGNMENT);
 
-    int createImageWithPointer(const size_t width,
-                               const size_t height,
-                               const cl_mem_flags flags,
-                               float *ptr,
-                               bool own_imgptr = true);
-    int createImageAllocMemory(const size_t width,
-                               const size_t height,
-                               const cl_mem_flags flags,
-                               const size_t ALIGNMENT);
+    template <typename T> int createImageWithPointer(const size_t width,
+                                                     const size_t height,
+                                                     const cl_mem_flags flags,
+                                                     T *ptr,
+                                                     bool own_imgptr = true);
+    template <typename T> int createImageAllocMemory(const size_t width,
+                                                     const size_t height,
+                                                     const cl_mem_flags flags,
+                                                     const size_t ALIGNMENT);
 
 public:
 
@@ -104,15 +104,15 @@ public:
                                            BUFFER_FLAGS mode,
                                            T *ptr,
                                            bool pinned = false);
-    int createImage(const size_t width,
-                    const size_t height,
-                    BUFFER_FLAGS mode,
-                    bool pinned = false);
-    int createImage(const size_t width,
-                    const size_t height,
-                    BUFFER_FLAGS mode,
-                    float *ptr,
-                    bool pinned = false);
+    template <typename T> int createImage(const size_t width,
+                                          const size_t height,
+                                          BUFFER_FLAGS mode,
+                                          bool pinned = false);
+    template <typename T> int createImage(const size_t width,
+                                          const size_t height,
+                                          BUFFER_FLAGS mode,
+                                          T *ptr,
+                                          bool pinned = false);
     int createSampler();
     bool releaseBuffers();
     bool releaseImages();
@@ -121,7 +121,7 @@ public:
                                             const T value);
     void memsetImage(const size_t image_index, const float value);
     template <typename T> T* bufferPtr(const size_t buffer_index) const;
-    float* imagePtr(const size_t image_index) const;
+    template <typename T> T* imagePtr(const size_t image_index) const;
     void ownBuffer(const size_t buffer_index);
     void ownImage(const size_t image_index);
 

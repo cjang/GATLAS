@@ -45,10 +45,10 @@ void fillconst(SCALAR_TYPE *outM, const SCALAR_TYPE value, const size_t length) 
 }
 
 template <typename SCALAR_TYPE>
-double absdiff(const SCALAR_TYPE *m1, const SCALAR_TYPE *m2, const size_t length) {
-    double accumdiff = 0;
+long double absdiff(const SCALAR_TYPE *m1, const SCALAR_TYPE *m2, const size_t length) {
+    long double accumdiff = 0;
     for (size_t i = 0; i < length; i++)
-        accumdiff += fabs(m1[i] - m2[i]);
+        accumdiff += fabsl(m1[i] - m2[i]);
     return accumdiff;
 }
 
@@ -85,7 +85,17 @@ bool fillrandBuffer(OCLApp& oclApp, const size_t bufferIndex, const size_t lengt
     return true;
 }
 
-bool fillrandImage(OCLApp& oclApp, const size_t imageIndex, const size_t length);
+template <typename T>
+bool fillrandImage(OCLApp& oclApp, const size_t imageIndex, const size_t length) {
+    T *ptr = oclApp.imagePtr<T>(imageIndex);
+    fillrand<T>(ptr, length);
+    const int syncImg = oclApp.enqueueWriteImage(imageIndex);
+    if (-1 == syncImg || !oclApp.wait(syncImg)) {
+        std::cerr << "error: random fill image " << imageIndex << std::endl;
+        return false;
+    }
+    return true;
+}
 
 template <typename T>
 void printArray(const T *ptr, const size_t length) {
@@ -162,18 +172,42 @@ bool checkBuffer(OCLApp& oclApp,
     return goodElements;
 }
 
+template <typename T>
 bool checkImage(OCLApp& oclApp,
                 const size_t imageIndex,
                 const size_t length,
-                const float  testValue,
-                const bool   printOutput);
+                const T      testValue,
+                const bool   printOutput) {
+    const T *ptr = oclApp.imagePtr<T>(imageIndex);
 
+    // quick and primitive test here
+    // e.g. if A and B are all 1s, then each element of C equals the matrix size
+    const bool goodElements = checkArray(ptr, length, testValue);
+
+    // print output matrix for debugging
+    if (printOutput) printArray(ptr, length);
+
+    return goodElements;
+}
+
+template <typename T>
 bool checkImage(OCLApp& oclApp,
                 const size_t imageIndex,
                 const size_t width,
                 const size_t height,
-                const float  testValue,
-                const bool   printOutput);
+                const T      testValue,
+                const bool   printOutput) {
+    const T *ptr = oclApp.imagePtr<T>(imageIndex);
+
+    // quick and primitive test here
+    // e.g. if A and B are all 1s, then each element of C equals the matrix size
+    const bool goodElements = checkArray(ptr, width * height, testValue);
+
+    // print output matrix for debugging
+    if (printOutput) printArray(ptr, width, height);
+
+    return goodElements;
+}
 
 template <typename T>
 bool checkBuffer(OCLApp&       oclApp,
@@ -182,7 +216,7 @@ bool checkBuffer(OCLApp&       oclApp,
                  const T      *testBuffer,
                  const bool    printOutput) {
     const T *ptr = oclApp.bufferPtr<T>(bufferIndex);
-    const double diff = absdiff(ptr, testBuffer, length);
+    const long double diff = absdiff(ptr, testBuffer, length);
     std::cerr << "absdiff: " << diff << "\t";
     if (printOutput) printDiff(ptr, testBuffer, length);
     return diff < static_cast<double>(1) / (length);
@@ -196,36 +230,104 @@ bool checkBuffer(OCLApp&       oclApp,
                  const T      *testBuffer,
                  const bool    printOutput) {
     const T *ptr = oclApp.bufferPtr<T>(bufferIndex);
-    const double diff = absdiff(ptr, testBuffer, width * height);
+    const long double diff = absdiff(ptr, testBuffer, width * height);
     std::cerr << "absdiff: " << diff << "\t";
     if (printOutput) printDiff(ptr, testBuffer, width, height);
     return diff < static_cast<double>(1) / (width * height);
 }
 
+template <typename T>
 bool checkImage(OCLApp&       oclApp,
                 const size_t  imageIndex,
                 const size_t  length,
-                const float  *testImage,
-                const bool    printOutput);
+                const T      *testImage,
+                const bool    printOutput) {
+    const T *ptr = oclApp.imagePtr<T>(imageIndex);
+    const long double diff = absdiff(ptr, testImage, length);
+    std::cerr << "absdiff: " << diff << "\t";
+    if (printOutput) printDiff(ptr, testImage, length);
+    return diff < static_cast<double>(1) / (length);
+}
 
+template <typename T>
 bool checkImage(OCLApp&       oclApp,
                 const size_t  imageIndex,
                 const size_t  width,
                 const size_t  height,
-                const float  *testImage,
-                const bool    printOutput);
+                const T      *testImage,
+                const bool    printOutput) {
+    const T *ptr = oclApp.imagePtr<T>(imageIndex);
+    const long double diff = absdiff(ptr, testImage, width * height);
+    std::cerr << "absdiff: " << diff << "\t";
+    if (printOutput) printDiff(ptr, testImage, width, height);
+    return diff < static_cast<double>(1) / (width * height);
+}
 
+template <typename T>
 int createImageR(OCLApp& oclApp, const size_t width, const size_t height,
                  const std::string& argName,
-                 const float value = 0, const bool pinned = false);
+                 const T value = 0, const bool pinned = false) {
+    const size_t typeSize = sizeof(T) / sizeof(float);
+    float *ptr = alloc_memalign<float, 4>(width * height * typeSize);
+    if (NULL == ptr) {
+        std::cerr << "error: OCL create image for " << argName << std::endl;
+        return -1;
+    }
+    fillconst<T>(reinterpret_cast<T*>(ptr), value, width * height);
+    const int imgHandle = isfloat<T>()
+                              ? oclApp.createImage(typeSize*width/4, height, OCLApp::READ, ptr, pinned)
+                              : oclApp.createImage(typeSize*width/4, height, OCLApp::READ, reinterpret_cast<unsigned int*>(ptr), pinned);
+    if (-1 == imgHandle) {
+        std::cerr << "error: OCL create image for " << argName << std::endl;
+    } else {
+        oclApp.ownImage(imgHandle);
+    }
+    return imgHandle;
+}
 
+template <typename T>
 int createImageW(OCLApp& oclApp, const size_t width, const size_t height,
                  const std::string& argName,
-                 const float value = 0, const bool pinned = false);
+                 const float value = 0, const bool pinned = false) {
+    const size_t typeSize = sizeof(T) / sizeof(float);
+    float *ptr = alloc_memalign<float, 4>(width * height * typeSize);
+    if (NULL == ptr) {
+        std::cerr << "error: OCL create image for " << argName << std::endl;
+        return -1;
+    }
+    fillconst<T>(reinterpret_cast<T*>(ptr), value, width * height);
+    const int imgHandle = isfloat<T>()
+                              ? oclApp.createImage(typeSize*width/4, height, OCLApp::WRITE, ptr, pinned)
+                              : oclApp.createImage(typeSize*width/4, height, OCLApp::WRITE, reinterpret_cast<unsigned int*>(ptr), pinned);
+    if (-1 == imgHandle) {
+        std::cerr << "error: OCL create image for " << argName << std::endl;
+    } else {
+        oclApp.ownImage(imgHandle);
+    }
+    return imgHandle;
+}
 
+template <typename T>
 int createImageRW(OCLApp& oclApp, const size_t width, const size_t height,
                   const std::string& argName,
-                  const float value = 0, const bool pinned = false);
+                  const float value = 0, const bool pinned = false) {
+    const size_t typeSize = sizeof(T) / sizeof(float);
+    float *ptr = alloc_memalign<float, 4>(width * height * typeSize);
+    if (NULL == ptr) {
+        std::cerr << "error: OCL create image for " << argName << std::endl;
+        return -1;
+    }
+    fillconst<T>(reinterpret_cast<T*>(ptr), value, width * height);
+    const int imgHandle = isfloat<T>()
+                              ? oclApp.createImage(typeSize*width/4, height, OCLApp::READWRITE, ptr, pinned)
+                              : oclApp.createImage(typeSize*width/4, height, OCLApp::READWRITE, reinterpret_cast<unsigned int*>(ptr), pinned);
+    if (-1 == imgHandle) {
+        std::cerr << "error: OCL create image for " << argName << std::endl;
+    } else {
+        oclApp.ownImage(imgHandle);
+    }
+    return imgHandle;
+}
 
 bool setArgImage(OCLApp& oclApp, const size_t kernelHandle, const size_t argIndex, const size_t imgHandle,
                  const std::string& argName);

@@ -30,7 +30,9 @@ class KernelMatmulImage : public KernelBaseMatmul,
                           protected MatmulParamGlobalID
 {
     typedef SCALAR scalar;
-    typedef VecType< SCALAR, VECTOR_LENGTH > scalarN;
+    typedef VecType< SCALAR, VECTOR_LENGTH > scalarN; // float4 or double2
+
+    const bool _spQuad; // true when SCALAR is float and VECTOR_LENGTH is 4
 
     int _handleA;
     int _handleB;
@@ -46,6 +48,7 @@ public:
           MatmulParamInlineMNK(getExtraParameter()),
           MatmulParamLoopOrder(getExtraParameter()),
           MatmulParamGlobalID(getExtraParameter()),
+          _spQuad(isfloat<SCALAR>() && 4 == VECTOR_LENGTH),
           _handleA(-1),
           _handleB(-1),
           _handleC(-1),
@@ -77,12 +80,12 @@ public:
         if (_paranoidCheck) {
             return generalizedMatmul()
                        ? checkBuffer<scalar>(oclApp, _handleC, dimN(), dimM(), _paranoidC, printOutput)
-                       : checkImage(oclApp, _handleC, dimN(), dimM(), _paranoidC, printOutput);
+                       : checkImage<scalar>(oclApp, _handleC, dimN(), dimM(), _paranoidC, printOutput);
         } else {
             const scalar testValue = dimK();
             return generalizedMatmul()
                        ? checkBuffer<scalar>(oclApp, _handleC, dimN(), dimM(), testValue, printOutput)
-                       : checkImage(oclApp, _handleC, dimN(), dimM(), testValue, printOutput);
+                       : checkImage<scalar>(oclApp, _handleC, dimN(), dimM(), testValue, printOutput);
         }
     }
 
@@ -93,14 +96,14 @@ public:
             oclApp.releaseImages();
             if (generalizedMatmul()) oclApp.releaseBuffers();
             _handleA = transposeA()
-                           ? createImageR(oclApp, dimM(), dimK(), "matA", 1)
-                           : createImageR(oclApp, dimK(), dimM(), "matA", 1);
+                           ? createImageR<scalar>(oclApp, dimM(), dimK(), "matA", 1)
+                           : createImageR<scalar>(oclApp, dimK(), dimM(), "matA", 1);
             _handleB = transposeB()
-                           ? createImageR(oclApp, dimK(), dimN(), "matB", 1)
-                           : createImageR(oclApp, dimN(), dimK(), "matB", 1);
+                           ? createImageR<scalar>(oclApp, dimK(), dimN(), "matB", 1)
+                           : createImageR<scalar>(oclApp, dimN(), dimK(), "matB", 1);
             _handleC = generalizedMatmul()
                            ? createBufferRW<scalar, VECTOR_LENGTH>(oclApp, dimN() * dimM(), "matC", 0)
-                           : createImageW(oclApp, dimN(), dimM(), "matC", 0);
+                           : createImageW<scalar>(oclApp, dimN(), dimM(), "matC", 0);
             if (-1 == _handleA || -1 == _handleB || -1 == _handleC) return false; // failure
         } else {
             // matrices A and B
@@ -123,14 +126,14 @@ public:
         if (_paranoidCheck) {
 
             // fill A and B matrices with random values
-            if (fillrandImage(oclApp, _handleA, dimM() * dimK()) &&
-                fillrandImage(oclApp, _handleB, dimK() * dimN()) &&
+            if (fillrandImage<scalar>(oclApp, _handleA, dimM() * dimK()) &&
+                fillrandImage<scalar>(oclApp, _handleB, dimK() * dimN()) &&
                 (generalizedMatmul()
                      ? fillrandBuffer<scalar>(oclApp, _handleC, dimM() * dimN())
                      : true)) {
 
-                const scalar *ptrA = oclApp.imagePtr(_handleA);
-                const scalar *ptrB = oclApp.imagePtr(_handleB);
+                const scalar *ptrA = oclApp.imagePtr<scalar>(_handleA);
+                const scalar *ptrB = oclApp.imagePtr<scalar>(_handleB);
                 const scalar *ptrC = generalizedMatmul() ? oclApp.bufferPtr<scalar>(_handleC) : NULL;
 
                 fillconst<scalar>(_paranoidC, 0, dimM() * dimN());
@@ -180,6 +183,8 @@ public:
     // prints the kernel source
     std::ostream& print(std::ostream& os) const {
 
+        pragma_extension<scalar>(os);
+
         // kernel function attributes
         AutoVectorize< scalarN > attrAutoVec;
         FunctionDeclaration kernelDecl(kernelName());
@@ -227,29 +232,37 @@ public:
                     const size_t blockNum = j / VECTOR_LENGTH;
                     const size_t blockIdx = j % VECTOR_LENGTH;
                     os << assign(valA[j],
-                                 ReadImage(matA, sampler,
-                                           wholeHeight() * globalRow + blockNum,
-                                           VECTOR_LENGTH * idx + blockIdx));
+                                 ReinterpretValue<SCALAR, VECTOR_LENGTH>(
+                                     ReadImage<scalar>(matA, sampler,
+                                                       wholeHeight() * globalRow + blockNum,
+                                                       VECTOR_LENGTH * idx + blockIdx),
+                                     !_spQuad));
                 }
             else
                 for (size_t j = 0; j < blockHeight(); j++)
                     os << assign(valA[j],
-                                 ReadImage(matA, sampler,
-                                           idx,
-                                           blockHeight() * globalRow + j));
+                                 ReinterpretValue<SCALAR, VECTOR_LENGTH>(
+                                     ReadImage<scalar>(matA, sampler,
+                                                       idx,
+                                                       blockHeight() * globalRow + j),
+                                     !_spQuad));
 
             // read in values of matrix B
             for (size_t j = 0; j < VECTOR_LENGTH; j++)
                 if (transposeB())
                     os << assign(valB[j],
-                                 ReadImage(matB, sampler,
-                                           idx,
-                                           VECTOR_LENGTH * globalCol + j));
+                                 ReinterpretValue<SCALAR, VECTOR_LENGTH>(
+                                     ReadImage<scalar>(matB, sampler,
+                                                       idx,
+                                                       VECTOR_LENGTH * globalCol + j),
+                                     !_spQuad));
                 else
                     os << assign(valB[j],
-                                 ReadImage(matB, sampler,
-                                           globalCol,
-                                           VECTOR_LENGTH * idx + j));
+                                 ReinterpretValue<SCALAR, VECTOR_LENGTH>(
+                                     ReadImage<scalar>(matB, sampler,
+                                                       globalCol,
+                                                       VECTOR_LENGTH * idx + j),
+                                     !_spQuad));
 
             // inner product accumulation
             assignMAD(os, loopOrder(), accum, valA, valB);
@@ -271,10 +284,10 @@ public:
                                                                   ? globalRow
                                                                   : groupSize() * blockRow + row;
             for (size_t i = 0; i < blockHeight(); i++)
-                os << WriteImage(matC_img,
-                                 valueGlobalCol,
-                                 blockHeight() * valueGlobalRow + i,
-                                 accum[i]);
+                os << WriteImage<scalar>(matC_img,
+                                         valueGlobalCol,
+                                         blockHeight() * valueGlobalRow + i,
+                                         ReinterpretValue<float, 4>(accum[i], !_spQuad));
         }
 
         return os << EndBlock(); // end function body

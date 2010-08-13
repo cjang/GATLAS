@@ -149,4 +149,6 @@ idxlist(const int v0,
     return l;
 }
 
+template <> bool isfloat<float>() { return true; }
+
 } // namespace
