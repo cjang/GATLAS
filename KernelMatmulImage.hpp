@@ -61,7 +61,9 @@ public:
     }
 
     std::string kernelName() const {
-        return "KernelMatmulImage";
+        std::stringstream ss;
+        ss << "matmulimage" << nameof<SCALAR>();
+        return ss.str();
     }
 
     void paranoidCheck() {

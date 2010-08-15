@@ -56,7 +56,9 @@ public:
     }
 
     std::string kernelName() const {
-        return "KernelMatmulBuffer";
+        std::stringstream ss;
+        ss << "matmulbuffer" << nameof<SCALAR>();
+        return ss.str();
     }
 
     void paranoidCheck() {
