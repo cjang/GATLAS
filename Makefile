@@ -3,10 +3,10 @@
 ATI_SDK = $(ATISTREAMSDKROOT)
 NVIDIA_SDK = /opt/NVIDIA_GPU_Computing_SDK
 
-GNU_CC = /usr/local/bin/gcc
+GNU_CC = gcc
 GNU_CFLAGS = -std=c99 -funsafe-math-optimizations -funroll-all-loops
 
-GNU_CXX = /usr/local/bin/g++
+GNU_CXX = g++
 GNU_CXXFLAGS = -funsafe-math-optimizations -funroll-all-loops
 #-O3 -funroll-all-loops  -fexpensive-optimizations -ffast-math -finline-functions -frerun-loop-opt -static-libgcc
 
