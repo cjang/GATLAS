@@ -1,0 +1,5 @@
+include Makefile.common
+
+USE_CFLAGS = $(ATI_CFLAGS)
+USE_LDFLAGS = $(ATI_OPENCL_LDFLAGS)
+
