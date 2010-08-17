@@ -304,12 +304,12 @@ public:
         for (size_t i = 0; i < blockHeight(); i++)
             if (generalizedMatmul())
                 os << assign(*(outC + i * (N / VECTOR_LENGTH)),
-                             (nameof<SCALAR>() == "double")
-                                 ? CastValue<scalarN>(alpha) * accum[i] +
-                                   CastValue<scalarN>(beta) * *(outC + i * (N / VECTOR_LENGTH))
-                                 : MADValue(CastValue<scalarN>(alpha),
+                             true //isfloat<SCALAR>()
+                                 ? MADValue(CastValue<scalarN>(alpha),
                                             accum[i],
-                                            CastValue<scalarN>(beta) * *(outC + i * (N / VECTOR_LENGTH))));
+                                            CastValue<scalarN>(beta) * *(outC + i * (N / VECTOR_LENGTH)))
+                                 : CastValue<scalarN>(alpha) * accum[i] +
+                                   CastValue<scalarN>(beta) * *(outC + i * (N / VECTOR_LENGTH)));
             else
                 os << assign(*(outC + i * (N / VECTOR_LENGTH)), accum[i]);
 

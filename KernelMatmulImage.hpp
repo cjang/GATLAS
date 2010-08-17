@@ -275,9 +275,11 @@ public:
             const ConstantValue<std::string> outC = matC_buf + multHeight(N) * globalRow + globalCol;
             for (size_t i = 0; i < blockHeight(); i++)
                 os << assign(*(outC + i * (N / VECTOR_LENGTH)),
-                             MADValue(CastValue<scalarN>(alpha),
-                                      accum[i],
-                                      CastValue<scalarN>(beta) * *(outC + i * (N / VECTOR_LENGTH))));
+                             true // isfloat<scalar>()
+                                 ? MADValue(CastValue<scalarN>(alpha),
+                                            accum[i],
+                                            CastValue<scalarN>(beta) * *(outC + i * (N / VECTOR_LENGTH)))
+                                 : CastValue<scalarN>(alpha) * accum[i] + CastValue<scalarN>(beta) * *(outC + i * (N / VECTOR_LENGTH)));
         } else {
             const ConstantValue<std::string> valueGlobalCol = globalID()
                                                                   ? globalCol
