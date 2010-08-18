@@ -33,7 +33,7 @@ OCL_OBJECT_CODE = \
 	OCLUtil.o \
 	OCLBase.o \
 	OCLApp.o \
-	OCLAppUtil.o \
+	OCLAppUtil.o
 
 GATLAS_OBJECT_CODE = \
 	GatlasAppUtil.o \
