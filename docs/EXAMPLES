@@ -85,62 +85,119 @@ clock time so any memory paging and I/O will affect measured times.
 
 
 ******************************************************************************
+* Memory buffer based DP matrix multiplication on ATI 5000 model GPUs
+
+Let's try using vector length of two (double2) for M/N/K = 1024.
+
+    ./bench_dmmbuf2 -d gpu -j my_device_journal_file -n 1024 -e -t 10
+
+On my HD 5870 using SDK v2.2 and Catalyst 10.7b, this gives 75 gigaFLOPS.
+
+    [0] 289446 usec	avg: 75.469	stddev: 10.5162	0 1024 1024 1024 0 0 8 8 2 2 7	(1 3)
+
+This best kernel should be checked to see if the output is good.
+
+    ./bench_dmmbuf2 -d gpu -j dummy_file -n 1024 -g 8 -y 2 -x 7 -p
+
+It looks ok.
+
+    [trial 0] rebuilding kernel... done	absdiff: 1.41731e-08	40553	0 1024 1024 1024 0 0 8 8 2 2 7	(1 3)
+    [0] 40553 usec	avg: 52.9291	stddev: 0	0 1024 1024 1024 0 0 8 8 2 2 7	(1 3)
+
+Let's do that a few more times to make sure.
+
+    ./bench_dmmbuf2 -d gpu -j dummy_file -n 1024 -g 8 -y 2 -x 7 -p -t 3
+
+It still looks ok.
+
+    [trial 0] rebuilding kernel... done	absdiff: 1.41731e-08	40987	0 1024 1024 1024 0 0 8 8 2 2 7	(1 3)
+    [trial 1] rebuilding kernel... done	absdiff: 1.42429e-08	39717	0 1024 1024 1024 0 0 8 8 2 2 7	(1 3)
+    [trial 2] rebuilding kernel... done	absdiff: 1.43066e-08	38979	0 1024 1024 1024 0 0 8 8 2 2 7	(1 3)
+
+Now let's print out this kernel.
+
+    ./print_dmmbuf2 -n 1024 -g 8 -y 2 -x 7
+
+
+******************************************************************************
 * Memory buffer based DGEMM on NVIDIA Fermi model GPUs
 
 Note that NVIDIA support is currently very immature. It has been recently
-added to GATLAS. Honestly, I consider it broken and alpha quality at best.
-Also, I have only a GTX 480 for development and testing. Experience is
-therefore limited with NVIDIA GPUs.
+added to GATLAS. I consider it alpha quality at best and completely broken
+at worst. Another issue is that all development is currently with a GTX 480.
+Experience is therefore limited with NVIDIA GPUs.
 
-The GATLAS image based kernels do not work on NVIDIA at present. They run but
-generate bad output. So we must use the memory buffer type. Let's try using a
-scalar kernel at M/N/K = 640.
+Let's try using a scalar kernel at M/N/K = 640.
 
     ./bench_dgemmbuf1 -d gpu -j my_device_journal_file -n 640 -e -t 10
 
-This reaches 80 gigaFLOPS on my GTX 480.
+This reaches 126 gigaFLOPS on my GTX 480.
 
-    [0] 65338 usec	avg: 80.3678	stddev: 0.0338132	1 640 640 640 0 0 8 8 4 1 6	(0 3)
+    [0] 41594 usec	avg: 126.246	stddev: 0.211438	1 640 640 640 0 0 8 8 10 1 2	(0 1)
 
 As above, the best kernel can be printed using the kernel parameters. In this
-case, the best kernel uses 8 x 8 work groups and 4 x 1 inner blocking with
-doubles. The extra parameter is 6.
+case, the best kernel uses 8 x 8 work groups and 10 x 1 inner blocking with
+doubles. The extra parameter is 2.
 
-    ./print_dgemmbuf1 -n 640 -g 8 -y 4 -x 6
+    ./print_dgemmbuf1 -n 640 -g 8 -y 10 -x 2
 
 To check this best kernel for correctness, the "-p" switch is used.
 
-    ./bench_dgemmbuf1 -d gpu -j dummy_file -n 640 -g 8 -y 4 -x 6 -p
+    ./bench_dgemmbuf1 -d gpu -j dummy_file -n 640 -g 8 -y 10 -x 2 -p
 
 The output on my GTX 480 using SDK v3.1 and driver 256.40 is:
 
-    [dummy run] rebuilding kernel... done	absdiff: 3.01176e-09	
-    [trial 0] rebuilding kernel... done	absdiff: 68142.1	fail	1 640 640 640 0 0 8 8 4 1 6	(0 3)
+    [dummy run] rebuilding kernel... done	absdiff: 1.31965e-09	
+    [trial 0] rebuilding kernel... done	absdiff: 31456.5	fail	1 640 640 640 0 0 8 8 10 1 2	(0 1)
 
-The output is bad! This kernel is best but generates corrupt output. Let's
-try another kind of kernel using a vector length of four (double4).
+The output is bad! This kernel generates corrupt output.
+
+Let's try another kind of kernel using a vector length of four (double4).
 
     ./bench_dgemmbuf4 -d gpu0 -j my_device_journal_file -n 640 -e -t 10
 
-This reaches 55 gigaFLOPS on my GTX 480.
+This reaches 75 gigaFLOPS on my GTX 480.
 
-    [0] 95162 usec	avg: 55.1804	stddev: 0.048141	1 640 640 640 0 0 8 8 4 4 7	(1 3)
+    [0] 69883 usec	avg: 75.1409	stddev: 0.0506575	1 640 640 640 0 0 8 8 5 4 5	(1 2)
 
-Is the kernel output correct?
+Is the kernel output correct? To be sure, let's check with random matrix data
+ten times.
 
-    ./bench_dgemmbuf4 -d gpu0 -j dummy_file -n 640 -g 8 -y 4 -x 7 -p
-    [trial 0] rebuilding kernel... done	absdiff: 11.5474	fail	1 640 640 640 0 0 8 8 4 4 7	(1 3)
+    ./bench_dgemmbuf4 -d gpu0 -j dummy_file -n 640 -g 8 -y 5 -x 5 -p -t 10
 
-No, it too fails!
+The output is:
 
-So let's try using "-p" during the EM search. This is much slower than normal
-as each trial uses random matrix data instead of a test pattern.
+    [dummy run] rebuilding kernel... done	absdiff: 1.45354e-12	
+    [trial 0] rebuilding kernel... done	absdiff: 5.23096e-09	6995	1 640 640 640 0 0 8 8 5 4 5	(1 2)
+    [trial 1] rebuilding kernel... done	absdiff: 2.86786e-09	7054	1 640 640 640 0 0 8 8 5 4 5	(1 2)
+    [trial 2] rebuilding kernel... done	absdiff: 3.20107e-09	6990	1 640 640 640 0 0 8 8 5 4 5	(1 2)
+    [trial 3] rebuilding kernel... done	absdiff: 4.31234e-10	6992	1 640 640 640 0 0 8 8 5 4 5	(1 2)
+    [trial 4] rebuilding kernel... done	absdiff: 7.26436	fail	1 640 640 640 0 0 8 8 5 4 5	(1 2)
 
-    ./bench_dgemmbuf4 -d gpu0 -j my_device_journal_file -n 640 -e -t 10 -p
+It stopped at the first failure. This tells us that we can not always trust a
+single check with random matrix data. Results may be non deterministic (for
+some reason, perhaps a race condition of some kind).
+
+So let's try the EM search with "-p" to try rejecting bad variations during
+the auto-tuning. This will take longer than usual due to the cost of the CPU
+reference calculation for each timing trial. Normally, only a test pattern is
+used to check the kernel output.
+
+    ./bench_dgemmbuf4 -d gpu0 -j dummy_file -n 640 -e -t 10 -p
+
+This seems to be working but at the end fails just as before.
+
+    [trial 0] 6988	1 640 640 640 0 0 8 8 5 4 11	(1 5)
+    [trial 1] rebuilding kernel... done	absdiff: 3.44117e-09	6992	1 640 640 640 0 0 8 8 5 4 11	(1 5)
+    [trial 2] rebuilding kernel... done	absdiff: 2.51564e-09	7000	1 640 640 640 0 0 8 8 5 4 11	(1 5)
+    [trial 3] rebuilding kernel... done	absdiff: 3.21879e-09	6991	1 640 640 640 0 0 8 8 5 4 11	(1 5)
+    [trial 4] rebuilding kernel... done	absdiff: 11.8456	fail	1 640 640 640 0 0 8 8 5 4 11	(1 5)
 
 ...my experience is that results are not deterministic. Kernels sometimes work
 with random matrix data and sometimes fail completely. These same kernels work
-perfectly on ATI GPUs.
+perfectly on ATI GPUs. I do not know the root cause of this. It may not be the
+kernels themselves but the benchmarking framework around them. For instance,
+if buffer data is not transferred properly, that will cause failures.
 
 Obviously, more work is required for NVIDIA support.
 
@@ -170,4 +227,10 @@ the device order is shown:
     name	Cypress
 
 So in this case, gpu0 is the GTX 480 and gpu1 is the HD 5870.
+
+One caution is that as the ATI and NVIDIA builds generate executable binaries
+with the same names, it is easy to become confused, especially since both
+OpenCL runtimes are aware of all GPUs on the system whether they are able to
+fully support them or not. I have accidentally used ATI binaries to run
+kernels on the NVIDIA GPU and vice-versa. I'm not sure what this really does.
 
