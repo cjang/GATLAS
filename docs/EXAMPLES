@@ -1,0 +1,173 @@
+GATLAS - GPU Automatically Tuned Linear Algebra Software
+
+Chris Jang
+fastkor@gmail.com
+
+August 20 2010
+
+
+******************************************************************************
+* Image based kernel SGEMM on ATI 5000 model GPUs
+
+Let's benchmark SGEMM using images on a single GPU system using EM search with
+the final benchmark as an average over ten trials. The calculation uses square
+matrices of size 3520 x 3520.
+
+    ./bench_sgemmimg -d gpu -j my_device_journal_file -n 3520 -e -t 10
+
+With my HD 5870 with SDK v2.2 and driver 10.7b, this reaches 1368 gigaFLOPS.
+Note that PCIe bus data transfer is not included in the benchmarking. Only
+kernel execution time is counted. Note there are command line switches to
+include PCIe bus data transfer in timings.
+
+    [trial 0] 152119	1 3520 3520 3520 0 0 16 16 4 4 0	(0 0 0)
+    ...
+    [0] 637648 usec	avg: 1368.37	stddev: 3.49687	1 3520 3520 3520 0 0 8 8 8 4 1	(1 0 0)
+
+The best kernel found uses work groups with 8 x 8 = 64 threads and an inner
+blocking of 8 x 4 quads (float4) for AB. The extra parameter of 1 affects
+kernel properties such as inlining matrix dimensions and inner product
+accumulation loop ordering. In this case, the matrix dimensions of M/N/K =
+3520 are inlined.
+
+There is a corresponding command line tool to printing out this best kernel.
+
+    ./print_sgemmimg -n 3520 -g 8 -y 8 -x 1
+
+Higher performance is possible if matrix A is transposed (column major). If we
+add a "-a" to the "bench" and "print" commands above, performance increases.
+
+    ./bench_sgemmimg -d gpu -j my_device_journal_file -n 3520 -e -t 10 -a
+
+On my HD 5870, this reaches 1418 gigaFLOPS.
+
+    [0] 615487 usec	avg: 1417.63	stddev: 2.74254	1 3520 3520 3520 1 0 8 8 8 4 3	(1 1 0)
+
+How do we know this kernel actually works? The OpenCL compiler may generate a
+fast kernel that produces bad output data. By adding the "-p" switch to the
+"bench" command, the GPU kernel output is compared with a simple reference CPU
+implementation using random matrix data. Other command line options specify
+the one kernel variation of interest. From the numbers:
+
+    1 0 8 8 8 4 3
+
+we find the best kernel uses 8 x 8 work groups and 8 x 4 inner blocking with
+an extra parameter of 3. The leading "1 0" indicate the matrix A is transposed
+while B is not. Note that we use a dummy file for the journal. If we use the
+real journal file, the memoization of the EM optimization search will take the
+previously sampled timing without passing any work to the GPU. That's not what
+we want here.
+
+    ./bench_sgemmimg -d gpu -j dummy_file -n 3520 -g 8 -y 8 -x 3 -a -p
+
+If the result has low error, we have some confidence it is ok. It is not that
+unusual to find that kernels which seem ok using a test pattern (such as A and
+B all ones) will fail when the input is randomized data. It is also not
+unusual to find that OpenCL kernels work on one device and fail on another.
+Results may also change depending on the SDK and driver. This makes validation
+of kernel output important.
+
+The benchmark output with "-p" is: (note this takes a long time as the CPU
+reference calculation is not optimized so is expensive for large matrices)
+
+    [dummy run] rebuilding kernel... done	absdiff: 0	
+    [trial 0] rebuilding kernel... done	absdiff: 0	89481	1 3520 3520 3520 1 0 8 8 8 4 3	(1 1 0)
+    [0] 89481 usec	avg: 975.103	stddev: 0	1 3520 3520 3520 1 0 8 8 8 4 3	(1 1 0)
+
+The absolute difference is zero. So this kernel is probably good.
+
+Notice the kernel timing is affected. It took 89481 microseconds instead of
+nearer to 61500 microseconds as it did earlier when reaching 1418 gigaFLOPS.
+My belief is that the allocation of 50 MB on the heap for the unoptimized
+CPU reference calculation affects the main timing loop even though all
+references to this memory are outside it. The benchmarks are done with wall
+clock time so any memory paging and I/O will affect measured times.
+
+
+******************************************************************************
+* Memory buffer based DGEMM on NVIDIA Fermi model GPUs
+
+Note that NVIDIA support is currently very immature. It has been recently
+added to GATLAS. Honestly, I consider it broken and alpha quality at best.
+Also, I have only a GTX 480 for development and testing. Experience is
+therefore limited with NVIDIA GPUs.
+
+The GATLAS image based kernels do not work on NVIDIA at present. They run but
+generate bad output. So we must use the memory buffer type. Let's try using a
+scalar kernel at M/N/K = 640.
+
+    ./bench_dgemmbuf1 -d gpu -j my_device_journal_file -n 640 -e -t 10
+
+This reaches 80 gigaFLOPS on my GTX 480.
+
+    [0] 65338 usec	avg: 80.3678	stddev: 0.0338132	1 640 640 640 0 0 8 8 4 1 6	(0 3)
+
+As above, the best kernel can be printed using the kernel parameters. In this
+case, the best kernel uses 8 x 8 work groups and 4 x 1 inner blocking with
+doubles. The extra parameter is 6.
+
+    ./print_dgemmbuf1 -n 640 -g 8 -y 4 -x 6
+
+To check this best kernel for correctness, the "-p" switch is used.
+
+    ./bench_dgemmbuf1 -d gpu -j dummy_file -n 640 -g 8 -y 4 -x 6 -p
+
+The output on my GTX 480 using SDK v3.1 and driver 256.40 is:
+
+    [dummy run] rebuilding kernel... done	absdiff: 3.01176e-09	
+    [trial 0] rebuilding kernel... done	absdiff: 68142.1	fail	1 640 640 640 0 0 8 8 4 1 6	(0 3)
+
+The output is bad! This kernel is best but generates corrupt output. Let's
+try another kind of kernel using a vector length of four (double4).
+
+    ./bench_dgemmbuf4 -d gpu0 -j my_device_journal_file -n 640 -e -t 10
+
+This reaches 55 gigaFLOPS on my GTX 480.
+
+    [0] 95162 usec	avg: 55.1804	stddev: 0.048141	1 640 640 640 0 0 8 8 4 4 7	(1 3)
+
+Is the kernel output correct?
+
+    ./bench_dgemmbuf4 -d gpu0 -j dummy_file -n 640 -g 8 -y 4 -x 7 -p
+    [trial 0] rebuilding kernel... done	absdiff: 11.5474	fail	1 640 640 640 0 0 8 8 4 4 7	(1 3)
+
+No, it too fails!
+
+So let's try using "-p" during the EM search. This is much slower than normal
+as each trial uses random matrix data instead of a test pattern.
+
+    ./bench_dgemmbuf4 -d gpu0 -j my_device_journal_file -n 640 -e -t 10 -p
+
+...my experience is that results are not deterministic. Kernels sometimes work
+with random matrix data and sometimes fail completely. These same kernels work
+perfectly on ATI GPUs.
+
+Obviously, more work is required for NVIDIA support.
+
+
+******************************************************************************
+* Multiple GPUs
+
+I normally use a HD 5870 and GTX 480 at the same time. GATLAS adds devices to
+a list in the order returned by the OpenCL runtime.
+
+By running the oclInfo utility: (does not matter if built for ATI or NVIDIA)
+
+    ./oclInfo
+
+the device order is shown:
+
+    device[0] = 0x21657c0	context 0x215a5c0	queue 0x2497e20
+    ...
+    name	GeForce GTX 480
+    ...
+    device[1] = 0x21fc0f0	context 0x237db80	queue 0x24982b0
+    ...
+    name	Intel(R) Core(TM) i7 CPU         920  @ 2.67GHz
+    ...
+    device[2] = 0x236a7d0	context 0x2497d90	queue 0x24db030
+    ...
+    name	Cypress
+
+So in this case, gpu0 is the GTX 480 and gpu1 is the HD 5870.
+

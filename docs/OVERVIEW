@@ -1,0 +1,140 @@
+GATLAS - GPU Automatically Tuned Linear Algebra Software
+
+Chris Jang
+fastkor@gmail.com
+
+August 20 2010
+
+
+* What is GATLAS today
+
+GATLAS is a basic auto-tuning and OpenCL metaprogramming system for one GPGPU
+kernel: matrix multiplication (SGEMM and DGEMM with special cases for pure
+matrix multiply). I expect to add additional kernels (e.g. BLAS levels one
+and two). The purpose is to easily run experiments to find fast kernel
+designs that work properly (generate correct output).
+
+ATI is often criticized very heavily for immaturity in the software stack
+supporting their GPGPU product line. However, my (limited) experience thus
+far is that NVIDIA has many issues too. Using the GPU for general purpose
+computation is like using GCC with -O3 and lots of dangerous compiler
+options. The higher performance is not free. This partially explains why
+GATLAS has so many kernel generation options. It is not possible to know
+the best kernel variants ahead of time. They must all be tested for both
+performance and correctness.
+
+* Benchmarking as statistical optimization
+
+I view kernel benchmarks as statistical averages of test trials. Each timing
+is a sample observation of a random variable that takes on the value of the
+time required for the kernel to run. From this point of view, it is natural
+to see the auto-tuning problem as statistical optimization.
+
+To be honest, I didn't initially see things from this high-level perspective.
+I was just hacking to see what worked. After a lot of trial and error, I was
+led towards solutions that I later recognized in a theoretical context. This
+path to the solution strengthens my belief that kernel auto-tuning is really
+statistical optimization.
+
+The computational kernels are conceptually templates parameterized over two
+kinds of parameters: dimensional and non-dimensional. The dimensional
+parameters are the M/N/K matrix dimensions, work group size (outer blocking)
+and AB inner blocking. The non-dimensional parameters affect things like
+inlining of matrix dimensions and loop ordering.
+
+Expectation Maximization is an algorithm that alternates between two sets of
+parameters, optimizing each one in turn. It is solving a series of nested
+optimization problems instead of trying to find a global optimum over all
+parameters at once. EM is directional. At each step, it picks a best
+variation which limits the number of variations required for the next step.
+
+From extensive testing, EM does work well for auto-tuning. It is much faster
+than brute force and very often finds the same solutions (several kernels may
+all run at the same best speed). While it is possible for EM to become trapped
+in perpetual oscillation, my experience is this does not happen under
+realistic conditions.
+
+* Journalling
+
+The original purpose of journalling was mainly a work-around to frequent
+compiler crashes in ATI Stream SDK v2.1. With memory buffer based kernels,
+GATLAS was constantly generating kernels that caused the OpenCL compiler to
+segmentation fault and crash the benchmarking process. Handling this required
+moving state to a journal so a process could restart and pick up where it left
+off. (Note the compiler seg faults have been fixed with ATI Stream SDK v2.2.)
+
+The other purpose was to automate handling of hung kernels (note this is still
+a problem with ATI Stream SDK v2.2). Some kernel variations just became stuck
+and hung the runtime. Whenever this happened, the only option was to reboot
+and restart the process. The last entry in the journal was the hanging kernel
+and the process would know to skip it as bad. This was not full automation as
+a manual reboot (or watchdog timer of some kind) was required. However,
+without this journalling, the auto-tuning could not proceed.
+
+After the journalling was added, I realized it also served two more purposes.
+It was a way to memoize the EM search and make it faster. It was also a way to
+record and playback searches at high speed for many devices. The journals
+became the system of record characterizing device performance. With the
+journal file, it was possible to replay any previously run benchmark from the
+file without touching a device.
+
+* Math and Application Kernels
+
+My initial vision was a drop-in GPGPU BLAS library for hardware acceleration
+of legacy applications. This is analogous to the approach today with the
+optimized CPU math kernel libraries from vendors (and FOSS, e.g. the ATLAS
+project).
+
+While this is useful, I've come to believe it is insufficient to fully
+realize the potential of the technology. It is necessary to optimize kernels
+at the application level. This is essentially what PeakStream was doing a
+few years ago (before they were acquired by Google). That vision was correct
+although different because OpenCL did not exist at the time. PeakStream had
+to build everything whereas today there is a deeper GPGPU technology base to
+start with.
+
+* Motivation
+
+GATLAS is a research and development testbed. The design, goals and scope
+have evolved over time resulting in additional features never anticipated
+when the project started. This has increased the complexity to the point
+that the GATLAS suite of benchmarking tools may be difficult to understand
+without some background knowledge motivating it.
+
+I started GATLAS without any prior experience using GPUs. I did have many
+years of C++ experience and graduate training in applied mathematics. My
+last job had been with a group doing quantitative retail supply chain work,
+both for a very large production system and research in support of
+management decisions.
+
+That was my first real world observation of the correlation between
+computational and business performance. When computations are cheap enough,
+more experiments and better visibility into data are possible. The entire
+man-machine system is smarter. I saw many cases in which limited resources
+(of both man and machine) forced worse solutions. It was just too expensive
+to calculate better ones.
+
+By the time I left, most of the team were PhDs, many with backgrounds in
+machine learning and statistics. This is how I see the need for high
+performance computing, in terms of quantitative problems over large data
+sets (i.e. retail supply chain, marketing and finance).
+
+It is a different world today than when supercomputing problems were mostly
+numerical solutions of differential equations over meshes and grids. The
+most expensive parts were the triangulation of the problem domain followed
+by solving the linear system. These were physics and engineering problems.
+
+Along with changes in the economy, high performance computing problems today
+have changed. They are now predominantly social problems in marketing, retail
+supply chains and finance over large data sets. There is a quantitative
+culture of statistics and machine learning, of finding structure in data.
+This motivates very different computional costs.
+
+As social problems are driven by data, my belief is the dominant cost is now
+calculating simple kernel functions over large data sets. These functions
+have low complexity but as the data sets are large, overall cost is high.
+This is a larger effect as the "outer loop" is driven by machine learning
+which ultimately becomes a problem in experimentation and search to find
+the best model that fits the data in a model family. This is automated trial
+and error and then picking the best result.
+
