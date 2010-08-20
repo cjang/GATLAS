@@ -30,12 +30,37 @@ DECL_TYPE_FUNCS(long)
 DECL_TYPE_FUNCS(float)
 DECL_TYPE_FUNCS(double)
 DECL_TYPE_FUNCS(char)
-DECL_TYPE_FUNCS(unsigned int)
 DECL_TYPE_FUNCS(unsigned long)
 DECL_TYPE_FUNCS(unsigned char)
 DECL_TYPE_FUNCS(void)
 DECL_TYPE_FUNCS(image2d_t)
 DECL_TYPE_FUNCS(sampler_t)
+
+//DECL_TYPE_FUNCS(unsigned int) special case handling for ReinterpretValue to pack doubles in uint32 images
+template <> size_t lengthof< unsigned int >() { return 1; }
+template <> size_t lengthof< unsigned int * >() { return 1; }
+template <> size_t lengthof< unsigned int * const >() { return 1; }
+template <> size_t lengthof< const unsigned int >() { return 1; }
+template <> size_t lengthof< const unsigned int * >() { return 1; }
+template <> size_t lengthof< const unsigned int * const >() { return 1; }
+template <> std::string basenameof< unsigned int >() { return "uint" ; }
+template <> std::string basenameof< unsigned int * >() { return "uint" ; }
+template <> std::string basenameof< unsigned int * const >() { return "uint" ; }
+template <> std::string basenameof< const unsigned int >() { return "uint" ; }
+template <> std::string basenameof< const unsigned int * >() { return "uint" ; }
+template <> std::string basenameof< const unsigned int * const >() { return "uint" ; }
+template <> std::string nameof< unsigned int >() { return "uint" ; }
+template <> std::string nameof< unsigned int * >() { return "uint" "*" ; }
+template <> std::string nameof< unsigned int * const >() { return "uint" "* const" ; }
+template <> std::string nameof< const unsigned int >() { return "const " "uint" ; }
+template <> std::string nameof< const unsigned int * >() { return "const " "uint" "*" ; }
+template <> std::string nameof< const unsigned int * const >() { return "const " "uint" "* const" ; }
+template <> std::string castto< unsigned int >() { return "unsigned int" ; }
+template <> std::string castto< unsigned int * >() { return "unsigned int" "*" ; }
+template <> std::string castto< unsigned int * const >() { return "unsigned int" "*" ; }
+template <> std::string castto< const unsigned int >() { return "unsigned int" ; }
+template <> std::string castto< const unsigned int * >() { return "unsigned int" "*" ; }
+template <> std::string castto< const unsigned int * const >() { return "unsigned int" "*" ; }
 
 // template<> std::string nameof<...>()
 // where: N = 2, 4, 8, 16 for:

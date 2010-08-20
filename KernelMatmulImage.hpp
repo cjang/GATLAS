@@ -291,7 +291,7 @@ public:
                 os << WriteImage<scalar>(matC_img,
                                          valueGlobalCol,
                                          blockHeight() * valueGlobalRow + i,
-                                         ReinterpretValue<float, 4>(accum[i], !_spQuad));
+                                         ReinterpretValue<uint, 4>(accum[i], !_spQuad));
         }
 
         return os << EndBlock(); // end function body
