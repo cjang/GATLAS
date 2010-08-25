@@ -137,7 +137,6 @@ MatmulExtraParameterObserver::MatmulExtraParameterObserver(const size_t numberVa
     : _numberVariations(numberVariations), _paramValue(0)
 {
     subject.addObserver(this);
-
 }
 
 size_t MatmulExtraParameterObserver::numberVariations() const { return _numberVariations; }
