@@ -229,6 +229,22 @@ bool MatmulGeneralized::gemmChanged() const { return _gemmChanged; }
 bool MatmulGeneralized::generalizedMatmul() const { return _generalizedMatmul; }
 
 ////////////////////////////////////////
+// MatvecPackedCalc
+
+MatmulPackedCalc::MatmulPackedCalc()
+    : _packedCalc(1), _packedChanged(false)
+{ }
+
+void MatmulPackedCalc::setPackedCalc(const size_t num) {
+    _packedChanged = (num != _packedCalc);
+    _packedCalc = num;
+}
+
+bool MatmulPackedCalc::packedChanged() const { return _packedChanged; }
+
+size_t MatmulPackedCalc::packedCalc() const { return _packedCalc; }
+
+////////////////////////////////////////
 // KernelBaseMatmul
 
 KernelBaseMatmul::KernelBaseMatmul()
@@ -238,7 +254,8 @@ KernelBaseMatmul::KernelBaseMatmul()
       MatmulInnerBlocking(),
       MatmulExtraParameter(),
       MatmulAttrAutoVec(),
-      MatmulGeneralized()
+      MatmulGeneralized(),
+      MatmulPackedCalc()
 { }
 
 KernelBaseMatmul::~KernelBaseMatmul() { }
@@ -248,6 +265,9 @@ bool KernelBaseMatmul::validParams() const {
     const size_t VECTOR_LENGTH = blockWidth();
 
     return
+        // packed kernels
+        packedCalc() > 0 &&
+
         // all matrix dimensions must be a multiple of VECTOR_LENGTH
         0 == dimM() % VECTOR_LENGTH &&
         0 == dimN() % VECTOR_LENGTH &&
@@ -274,6 +294,9 @@ bool KernelBaseMatmul::getParams(vector<size_t>& params) const {
     bool rc;
     if (rc = validParams()) {
         params.clear();
+
+        // packed kernels
+        params.push_back(packedCalc());
 
         // GEMM or pure matrix multiply only
         params.push_back(generalizedMatmul());
@@ -303,6 +326,10 @@ bool KernelBaseMatmul::getParams(vector<size_t>& params) const {
 
 void KernelBaseMatmul::setParams(const vector<size_t>& params) {
     size_t index = 0;
+
+    // packed kernels
+    const size_t numberKernels = params[index++];
+    setPackedCalc(numberKernels);
 
     // GEMM or pure matrix multiply only
     const size_t GEMM = params[index++];
@@ -350,9 +377,9 @@ vector<size_t> KernelBaseMatmul::localWorkItems() const {
 
 size_t KernelBaseMatmul::numberFlops() const {
     if (generalizedMatmul())
-        return 2 * dimM() * dimN() * (dimK() + 1);
+        return packedCalc() * 2 * dimM() * dimN() * (dimK() + 1);
     else
-        return dimM() * dimN() * (2 * dimK() - 1);
+        return packedCalc() * dimM() * dimN() * (2 * dimK() - 1);
 }
 
 }; // namespace

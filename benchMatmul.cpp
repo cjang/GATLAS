@@ -37,6 +37,7 @@ using namespace std;
 bool parseOpts(int argc, char *argv[],
                string& device,
                string& journalFile,
+               size_t& packedKernels,
                int& M,
                int& N,
                int& K,
@@ -54,17 +55,18 @@ bool parseOpts(int argc, char *argv[],
                bool& vectorAttributeHint,
                bool& printDebug) {
     int opt;
-    while ((opt = getopt(argc, argv, "heabsrpvzd:j:m:n:k:g:y:x:t:w:")) != -1) {
+    while ((opt = getopt(argc, argv, "heabsrpvzd:j:C:m:n:k:g:y:x:t:w:")) != -1) {
         switch (opt) {
             case ('h') :
                 cerr << "usage: " << argv[0]
-                     << " -d cpu|gpu|acc|cpuX|gpuX|accX -j journalFile -n N [-m M -k K]"
+                     << " -d cpu|gpu|acc|cpuX|gpuX|accX -j journalFile [-C numKernels] -n N [-m M -k K]"
                         " [-g groupSize [-y blockHeight [-x extraParam]]]"
                         " [-t numberTrials]"
                         " [-w topN]"
                         " [-e] [-a] [-b] [-s] [-r] [-p] [-v] [-z] [-h]" << endl
                      << "\t-d cpu, gpu or accelerator device, optional X is the device number" << endl
                      << "\t-j journal file" << endl
+                     << "\t-C number of coalesced kernels (default is 1)" << endl
                      << "\t-m matrix dimension M" << endl
                      << "\t-n matrix dimension N" << endl
                      << "\t-k matrix dimension K" << endl
@@ -86,6 +88,7 @@ bool parseOpts(int argc, char *argv[],
                 exit(1);
             case ('d') : device = optarg; break;
             case ('j') : journalFile = optarg; break;
+            case ('C') : packedKernels = atoi(optarg); break;
             case ('m') : M = atoi(optarg); break;
             case ('n') : N = atoi(optarg); break;
             case ('k') : K = atoi(optarg); break;
@@ -114,6 +117,10 @@ bool parseOpts(int argc, char *argv[],
     }
     if (journalFile.empty()) {
         cerr << "error: journal file must be specified" << endl;
+        rc = false;
+    }
+    if (0 == packedKernels) {
+        cerr << "error: number of kernels to coalesce must be at least one" << endl;
         rc = false;
     }
     if (-1 == N) {
@@ -361,6 +368,7 @@ int main(int argc, char *argv[])
 {
     string device = "<unspecified>";
     string journalFile;
+    size_t packedKernels = 1;
     int M = -1, N = -1, K = -1;
     int groupSize = -1, blockHeight = -1, extraParam = -1;
     size_t numberTrials = 1;
@@ -375,6 +383,7 @@ int main(int argc, char *argv[])
     if (!parseOpts(argc, argv,
                    device,
                    journalFile,
+                   packedKernels,
                    M, N, K,
                    groupSize, blockHeight, extraParam,
                    numberTrials,
@@ -401,6 +410,9 @@ int main(int argc, char *argv[])
 
     // kernel vector attribute hint?
     kernel.setUseAttrAutoVec(vectorAttributeHint);
+
+    // packed kernel support
+    kernel.setPackedCalc(packedKernels);
 
     // not using EM
     if (! emOptimization) {

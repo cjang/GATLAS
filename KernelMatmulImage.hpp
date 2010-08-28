@@ -69,7 +69,7 @@ public:
     void paranoidCheck() {
         _paranoidCheck = true;
         delete[] _paranoidC;
-        _paranoidC = new scalar[dimM() * dimN()];
+        _paranoidC = new scalar[packedCalc() * dimM() * dimN()];
     }
 
     bool syncOutput(OCLApp& oclApp) {
@@ -81,31 +81,31 @@ public:
     bool checkOutput(OCLApp& oclApp, const bool printOutput) {
         if (_paranoidCheck) {
             return generalizedMatmul()
-                       ? checkBuffer<scalar>(oclApp, _handleC, dimN(), dimM(), _paranoidC, printOutput)
-                       : checkImage<scalar>(oclApp, _handleC, dimN(), dimM(), _paranoidC, printOutput);
+                       ? checkBuffer<scalar>(oclApp, _handleC, dimN(), packedCalc() * dimM(), _paranoidC, printOutput)
+                       : checkImage<scalar>(oclApp, _handleC, dimN(), packedCalc() * dimM(), _paranoidC, printOutput);
         } else {
             const scalar testValue = dimK();
             return generalizedMatmul()
-                       ? checkBuffer<scalar>(oclApp, _handleC, dimN(), dimM(), testValue, printOutput)
-                       : checkImage<scalar>(oclApp, _handleC, dimN(), dimM(), testValue, printOutput);
+                       ? checkBuffer<scalar>(oclApp, _handleC, dimN(), packedCalc() * dimM(), testValue, printOutput)
+                       : checkImage<scalar>(oclApp, _handleC, dimN(), packedCalc() * dimM(), testValue, printOutput);
         }
     }
 
     bool setArgs(OCLApp& oclApp, const size_t kernelHandle, const bool syncInput) {
 
         // buffer allocation
-        if (-1 == _handleA || -1 == _handleB || -1 == _handleC || dimChanged() || layoutChanged()) {
+        if (-1 == _handleA || -1 == _handleB || -1 == _handleC || dimChanged() || layoutChanged() || packedChanged()) {
             oclApp.releaseImages();
             if (generalizedMatmul()) oclApp.releaseBuffers();
             _handleA = transposeA()
-                           ? createImageR<scalar>(oclApp, dimM(), dimK(), "matA", 1)
-                           : createImageR<scalar>(oclApp, dimK(), dimM(), "matA", 1);
+                           ? createImageR<scalar>(oclApp, dimM(), packedCalc() * dimK(), "matA", 1)
+                           : createImageR<scalar>(oclApp, dimK(), packedCalc() * dimM(), "matA", 1);
             _handleB = transposeB()
-                           ? createImageR<scalar>(oclApp, dimK(), dimN(), "matB", 1)
-                           : createImageR<scalar>(oclApp, dimN(), dimK(), "matB", 1);
+                           ? createImageR<scalar>(oclApp, dimK(), packedCalc() * dimN(), "matB", 1)
+                           : createImageR<scalar>(oclApp, dimN(), packedCalc() * dimK(), "matB", 1);
             _handleC = generalizedMatmul()
-                           ? createBufferRW<scalar, VECTOR_LENGTH>(oclApp, dimN() * dimM(), "matC", 0)
-                           : createImageW<scalar>(oclApp, dimN(), dimM(), "matC", 0);
+                           ? createBufferRW<scalar, VECTOR_LENGTH>(oclApp, packedCalc() * dimN() * dimM(), "matC", 0)
+                           : createImageW<scalar>(oclApp, dimN(), packedCalc() * dimM(), "matC", 0);
             if (-1 == _handleA || -1 == _handleB || -1 == _handleC) return false; // failure
         } else {
             // matrices A and B
@@ -128,33 +128,39 @@ public:
         if (_paranoidCheck) {
 
             // fill A and B matrices with random values
-            if (fillrandImage<scalar>(oclApp, _handleA, dimM() * dimK()) &&
-                fillrandImage<scalar>(oclApp, _handleB, dimK() * dimN()) &&
+            if (fillrandImage<scalar>(oclApp, _handleA, packedCalc() * dimM() * dimK()) &&
+                fillrandImage<scalar>(oclApp, _handleB, packedCalc() * dimK() * dimN()) &&
                 (generalizedMatmul()
-                     ? fillrandBuffer<scalar>(oclApp, _handleC, dimM() * dimN())
+                     ? fillrandBuffer<scalar>(oclApp, _handleC, packedCalc() * dimM() * dimN())
                      : true)) {
 
                 const scalar *ptrA = oclApp.imagePtr<scalar>(_handleA);
                 const scalar *ptrB = oclApp.imagePtr<scalar>(_handleB);
                 const scalar *ptrC = generalizedMatmul() ? oclApp.bufferPtr<scalar>(_handleC) : NULL;
 
-                fillconst<scalar>(_paranoidC, 0, dimM() * dimN());
+                fillconst<scalar>(_paranoidC, 0, packedCalc() * dimM() * dimN());
 
-                // calculate C
-                for (size_t i = 0; i < dimM(); i++)
-                for (size_t j = 0; j < dimN(); j++)
-                for (size_t k = 0; k < dimK(); k++)
-                    _paranoidC[i * dimN() + j] += (transposeA()
-                                                       ? ptrA[k * dimM() + i]
-                                                       : ptrA[i * dimK() + k])
-                                                * (transposeB()
-                                                       ? ptrB[j * dimK() + k]
-                                                       : ptrB[k * dimN() + j]);
+                // packed kernels
+                for (size_t pIdx = 0; pIdx < packedCalc(); pIdx++) {
+
+                    // calculate C
+                    for (size_t i = 0; i < dimM(); i++)
+                    for (size_t j = 0; j < dimN(); j++)
+                    for (size_t k = 0; k < dimK(); k++)
+                        _paranoidC[pIdx * dimM() * dimN() + i * dimN() + j]
+                            += (transposeA()
+                                    ? ptrA[pIdx * dimM() * dimK() + k * dimM() + i]
+                                    : ptrA[pIdx * dimM() * dimK() + i * dimK() + k])
+                             * (transposeB()
+                                    ? ptrB[pIdx * dimK() * dimN() + j * dimK() + k]
+                                    : ptrB[pIdx * dimK() * dimN() + k * dimN() + j]);
 
                 // multiply AB product by alpha and add beta times C
                 if (generalizedMatmul())
                     for (size_t i = 0; i < dimM() * dimN(); i++)
-                        _paranoidC[i] = alpha * _paranoidC[i] + beta * ptrC[i];
+                        _paranoidC[pIdx * dimM() * dimN() + i] = alpha * _paranoidC[pIdx * dimM() * dimN() + i]
+                                                               + beta * ptrC[pIdx * dimM() * dimN() + i];
+                }
             } else {
                 std::cerr << "error: failed to fill input matrices with random values" << std::endl;
             }
@@ -214,7 +220,7 @@ public:
 
         // accumulate inner product sum
         Vector< scalarN > accum("accum", blockHeight());
-        os << declare(accum, CastValue<scalarN>(ConstantValue<scalar>(0)));
+        os << declare(accum);
 
         // current values from matrix A (for inner product)
         Vector< scalarN > valA("valA", blockHeight());
@@ -224,75 +230,84 @@ public:
         Vector< scalarN > valB("valB", VECTOR_LENGTH);
         os << declare(valB);
 
-        // inner product loop
-        Var< int > idx("idx");
-        os << ForLoop(idx, K / VECTOR_LENGTH, 1);
+        // packed kernel support
+        Var< int > pIdx("pIdx", 1 == packedCalc(), 0);
+        if (1 != packedCalc()) os << ForLoop(pIdx, packedCalc(), 1);
 
-            // read in values of matrix A
-            if (transposeA())
-                for (size_t j = 0; j < blockHeight(); j++) {
-                    const size_t blockNum = j / VECTOR_LENGTH;
-                    const size_t blockIdx = j % VECTOR_LENGTH;
-                    os << assign(valA[j],
-                                 ReinterpretValue<SCALAR, VECTOR_LENGTH>(
-                                     ReadImage<scalar>(matA, sampler,
-                                                       wholeHeight() * globalRow + blockNum,
-                                                       VECTOR_LENGTH * idx + blockIdx),
-                                     !_spQuad));
-                }
-            else
-                for (size_t j = 0; j < blockHeight(); j++)
-                    os << assign(valA[j],
-                                 ReinterpretValue<SCALAR, VECTOR_LENGTH>(
-                                     ReadImage<scalar>(matA, sampler,
-                                                       idx,
-                                                       blockHeight() * globalRow + j),
-                                     !_spQuad));
+            // set accumulators to zero
+            os << assign(accum, CastValue<scalarN>(ConstantValue<scalar>(0)));
 
-            // read in values of matrix B
-            for (size_t j = 0; j < VECTOR_LENGTH; j++)
-                if (transposeB())
-                    os << assign(valB[j],
-                                 ReinterpretValue<SCALAR, VECTOR_LENGTH>(
-                                     ReadImage<scalar>(matB, sampler,
-                                                       idx,
-                                                       VECTOR_LENGTH * globalCol + j),
-                                     !_spQuad));
+            // inner product loop
+            Var< int > idx("idx");
+            os << ForLoop(idx, K / VECTOR_LENGTH, 1);
+
+                // read in values of matrix A
+                if (transposeA())
+                    for (size_t j = 0; j < blockHeight(); j++) {
+                        const size_t blockNum = j / VECTOR_LENGTH;
+                        const size_t blockIdx = j % VECTOR_LENGTH;
+                        os << assign(valA[j],
+                                     ReinterpretValue<SCALAR, VECTOR_LENGTH>(
+                                         ReadImage<scalar>(matA, sampler,
+                                                           wholeHeight() * globalRow + blockNum,
+                                                           VECTOR_LENGTH * idx + blockIdx + pIdx * K),
+                                         !_spQuad));
+                    }
                 else
-                    os << assign(valB[j],
-                                 ReinterpretValue<SCALAR, VECTOR_LENGTH>(
-                                     ReadImage<scalar>(matB, sampler,
-                                                       globalCol,
-                                                       VECTOR_LENGTH * idx + j),
-                                     !_spQuad));
+                    for (size_t j = 0; j < blockHeight(); j++)
+                        os << assign(valA[j],
+                                     ReinterpretValue<SCALAR, VECTOR_LENGTH>(
+                                         ReadImage<scalar>(matA, sampler,
+                                                           idx,
+                                                           blockHeight() * globalRow + j + pIdx * M),
+                                         !_spQuad));
 
-            // inner product accumulation
-            assignMAD(os, loopOrder(), accum, valA, valB);
+                // read in values of matrix B
+                for (size_t j = 0; j < VECTOR_LENGTH; j++)
+                    if (transposeB())
+                        os << assign(valB[j],
+                                     ReinterpretValue<SCALAR, VECTOR_LENGTH>(
+                                         ReadImage<scalar>(matB, sampler,
+                                                           idx,
+                                                           VECTOR_LENGTH * globalCol + j + pIdx * N),
+                                         !_spQuad));
+                    else
+                        os << assign(valB[j],
+                                     ReinterpretValue<SCALAR, VECTOR_LENGTH>(
+                                         ReadImage<scalar>(matB, sampler,
+                                                           globalCol,
+                                                           VECTOR_LENGTH * idx + j + pIdx * K),
+                                         !_spQuad));
 
-        os << EndBlock();
+                // inner product accumulation
+                assignMAD(os, loopOrder(), accum, valA, valB);
 
-        if (generalizedMatmul()) {
-            const ConstantValue<std::string> outC = matC_buf + multHeight(N) * globalRow + globalCol;
-            for (size_t i = 0; i < blockHeight(); i++)
-                os << assign(*(outC + i * (N / VECTOR_LENGTH)),
-                             true // isfloat<scalar>()
-                                 ? MADValue(CastValue<scalarN>(alpha),
-                                            accum[i],
-                                            CastValue<scalarN>(beta) * *(outC + i * (N / VECTOR_LENGTH)))
-                                 : CastValue<scalarN>(alpha) * accum[i] + CastValue<scalarN>(beta) * *(outC + i * (N / VECTOR_LENGTH)));
-        } else {
-            const ConstantValue<std::string> valueGlobalCol = globalID()
-                                                                  ? globalCol
-                                                                  : groupSize() * blockCol + col;
-            const ConstantValue<std::string> valueGlobalRow = globalID()
-                                                                  ? globalRow
-                                                                  : groupSize() * blockRow + row;
-            for (size_t i = 0; i < blockHeight(); i++)
-                os << WriteImage<scalar>(matC_img,
-                                         valueGlobalCol,
-                                         blockHeight() * valueGlobalRow + i,
-                                         ReinterpretValue<uint, 4>(accum[i], !_spQuad));
-        }
+            os << EndBlock();
+
+            if (generalizedMatmul()) {
+                const ConstantValue<std::string> outC = matC_buf + multHeight(N) * globalRow + globalCol + pIdx * M * N / VECTOR_LENGTH;
+                for (size_t i = 0; i < blockHeight(); i++)
+                    os << assign(*(outC + i * (N / VECTOR_LENGTH)),
+                                 true // isfloat<scalar>()
+                                     ? MADValue(CastValue<scalarN>(alpha),
+                                                accum[i],
+                                                CastValue<scalarN>(beta) * *(outC + i * (N / VECTOR_LENGTH)))
+                                     : CastValue<scalarN>(alpha) * accum[i] + CastValue<scalarN>(beta) * *(outC + i * (N / VECTOR_LENGTH)));
+            } else {
+                const ConstantValue<std::string> valueGlobalCol = globalID()
+                                                                      ? globalCol
+                                                                      : groupSize() * blockCol + col;
+                const ConstantValue<std::string> valueGlobalRow = globalID()
+                                                                      ? globalRow
+                                                                      : groupSize() * blockRow + row;
+                for (size_t i = 0; i < blockHeight(); i++)
+                    os << WriteImage<scalar>(matC_img,
+                                             valueGlobalCol,
+                                             blockHeight() * valueGlobalRow + i + pIdx * M,
+                                             ReinterpretValue<uint, 4>(accum[i], !_spQuad));
+            }
+
+        if (1 != packedCalc()) os << EndBlock();
 
         return os << EndBlock(); // end function body
     }

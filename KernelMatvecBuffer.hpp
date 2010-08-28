@@ -62,7 +62,7 @@ public:
     void paranoidCheck() {
         _paranoidCheck = true;
         delete[] _paranoidC;
-        _paranoidC = new scalar[dimM()];
+        _paranoidC = new scalar[packedCalc() * dimM()];
     }
 
     bool syncOutput(OCLApp& oclApp) {
@@ -71,23 +71,23 @@ public:
 
     bool checkOutput(OCLApp& oclApp, const bool printOutput) {
         if (_paranoidCheck) {
-            return checkBuffer<scalar>(oclApp, _handleC, dimM(), _paranoidC, printOutput);
+            return checkBuffer<scalar>(oclApp, _handleC, packedCalc() * dimM(), _paranoidC, printOutput);
         } else {
             const scalar testValue = dimN();
-            return checkBuffer<scalar>(oclApp, _handleC, dimM(), testValue, printOutput);
+            return checkBuffer<scalar>(oclApp, _handleC, packedCalc() * dimM(), testValue, printOutput);
         }
     }
 
     bool setArgs(OCLApp& oclApp, const size_t kernelHandle, const bool syncInput) {
 
         // buffer allocation
-        if (-1 == _handleA || -1 == _handleB || -1 == _handleC || dimChanged()) {
+        if (-1 == _handleA || -1 == _handleB || -1 == _handleC || dimChanged() || packedChanged()) {
             oclApp.releaseBuffers();
-            _handleA = createBufferR<scalar, VECTOR_LENGTH>(oclApp, dimM() * dimN(), "matA", 1);
-            _handleB = createBufferR<scalar, VECTOR_LENGTH>(oclApp, dimN(), "vecB", 1);
+            _handleA = createBufferR<scalar, VECTOR_LENGTH>(oclApp, packedCalc() * dimM() * dimN(), "matA", 1);
+            _handleB = createBufferR<scalar, VECTOR_LENGTH>(oclApp, packedCalc() * dimN(), "vecB", 1);
             _handleC = generalizedMatvec()
-                           ? createBufferRW<scalar, VECTOR_LENGTH>(oclApp, dimM(), "vecC", 0)
-                           : createBufferW<scalar, VECTOR_LENGTH>(oclApp, dimM(), "vecC", 0);
+                           ? createBufferRW<scalar, VECTOR_LENGTH>(oclApp, packedCalc() * dimM(), "vecC", 0)
+                           : createBufferW<scalar, VECTOR_LENGTH>(oclApp, packedCalc() * dimM(), "vecC", 0);
             if (-1 == _handleA || -1 == _handleB || -1 == _handleC) return false; // failure
         } else {
             // matrix A and vector B
@@ -106,30 +106,36 @@ public:
         if (_paranoidCheck) {
 
             // fill matrix A and vector B with random values
-            if (fillrandBuffer<scalar>(oclApp, _handleA, dimM() * dimN()) &&
-                fillrandBuffer<scalar>(oclApp, _handleB, dimN()) &&
+            if (fillrandBuffer<scalar>(oclApp, _handleA, packedCalc() * dimM() * dimN()) &&
+                fillrandBuffer<scalar>(oclApp, _handleB, packedCalc() * dimN()) &&
                 (generalizedMatvec()
-                     ? fillrandBuffer<scalar>(oclApp, _handleC, dimM())
+                     ? fillrandBuffer<scalar>(oclApp, _handleC, packedCalc() * dimM())
                      : true)) {
 
                 const scalar *ptrA = oclApp.bufferPtr<scalar>(_handleA);
                 const scalar *ptrB = oclApp.bufferPtr<scalar>(_handleB);
                 const scalar *ptrC = generalizedMatvec() ? oclApp.bufferPtr<scalar>(_handleC) : NULL;
 
-                fillconst<scalar>(_paranoidC, 0, dimM());
+                fillconst<scalar>(_paranoidC, 0, packedCalc() * dimM());
 
-                // calculate C
-                for (size_t i = 0; i < dimM(); i++)
-                for (size_t j = 0; j < dimN(); j++)
-                    _paranoidC[i] += (transposeA()
-                                          ? ptrA[j * dimM() + i]
-                                          : ptrA[i * dimN() + j])
-                                   * ptrB[j];
+                // packed kernels
+                for (size_t pIdx = 0; pIdx < packedCalc(); pIdx++) {
 
-                // multiply AB product by alpha and add beta times C
-                if (generalizedMatvec())
+                    // calculate C
                     for (size_t i = 0; i < dimM(); i++)
-                        _paranoidC[i] = alpha * _paranoidC[i] + beta * ptrC[i];
+                    for (size_t j = 0; j < dimN(); j++)
+                        _paranoidC[pIdx * dimM() + i]
+                            += (transposeA()
+                                    ? ptrA[pIdx * dimM() * dimN() + j * dimM() + i]
+                                    : ptrA[pIdx * dimM() * dimN() + i * dimN() + j])
+                             * ptrB[pIdx * dimN() + j];
+
+                    // multiply AB product by alpha and add beta times C
+                    if (generalizedMatvec())
+                        for (size_t i = 0; i < dimM(); i++)
+                            _paranoidC[pIdx * dimM() + i] = alpha * _paranoidC[pIdx * dimM() + i]
+                                                          + beta * ptrC[pIdx * dimM() + i];
+                }
             } else {
                 std::cerr << "error: failed to fill input matrices with random values" << std::endl;
             }
@@ -204,7 +210,7 @@ public:
 
         // accumulate inner product sum
         Vector< scalarN > accum("accum", wholeHeight());
-        os << declare(accum, CastValue<scalarN>(ConstantValue<scalar>(0)));
+        os << declare(accum);
 
         // current value from matA (for matrix vector outer product)
         Var< scalarN > valA("valA");
@@ -216,10 +222,22 @@ public:
 
         // pointer to matA
         Var< const scalarN* > ptrMatA("ptrMatA", GLOBAL);
-        if (transposeA())
-            os << declare(ptrMatA, matA + wholeHeight() * globalRow);
-        else
-            os << declare(ptrMatA, matA + multHeight(N) * globalRow);
+        os << declare(ptrMatA);
+
+        // packed kernel support
+        Var< int > pIdx("pIdx", 1 == packedCalc(), 0);
+        if (1 != packedCalc()) os << ForLoop(pIdx, packedCalc(), 1);
+
+            // set accumulators to zero
+            os << assign(accum, CastValue<scalarN>(ConstantValue<scalar>(0)));
+
+            // start at left or top edge of matrix A
+            if (transposeA())
+                os << assign(ptrMatA, matA + wholeHeight() * globalRow
+                                           + pIdx * M * N / VECTOR_LENGTH);
+            else
+                os << assign(ptrMatA, matA + multHeight(N) * globalRow
+                                           + pIdx * M * N / VECTOR_LENGTH);
 
 /*
  * copying global vector B to local memory causes failures with
@@ -247,11 +265,11 @@ public:
         os << LocalBarrier();
  */
 
-        // outer loop over vector B
-        Var< int > idx("idx");
-        os << ForLoop(idx, N / VECTOR_LENGTH, 1);
+            // outer loop over vector B
+            Var< int > idx("idx");
+            os << ForLoop(idx, N / VECTOR_LENGTH, 1);
 
-            // read value from vector B
+                // read value from vector B
 /*
  * copying global vector B to local memory causes failures with
  * vector elements on ATI and as scalars are slow, is bad
@@ -260,44 +278,48 @@ public:
  *
             os << assign(valB, *(tmpB + idx));
  */
-            os << assign(valB, *(vecB + idx));
+                os << assign(valB, *(vecB + idx
+                                          + pIdx * N / VECTOR_LENGTH));
 
-            // inner loop over matrix A
-            for (size_t j = 0; j < blockHeight(); j++) {
-                const size_t blockNum = j / VECTOR_LENGTH;
-                const size_t blockIdx = j % VECTOR_LENGTH;
-                if (transposeA()) {
-                    os << assign(valA, *(ptrMatA + blockNum + blockIdx * M / VECTOR_LENGTH));
-                    for (size_t k = 0; k < VECTOR_LENGTH; k++)
-                        os << assignMAD(accum[blockNum], valA, valB, k);
-                } else {
-                    os << assign(valA, *(ptrMatA + j * N / VECTOR_LENGTH));
-                    for (size_t k = 0; k < VECTOR_LENGTH; k++)
-                        os << assignMAD(accum[blockNum], valA, valB, blockIdx, k);
+                // inner loop over matrix A
+                for (size_t j = 0; j < blockHeight(); j++) {
+                    const size_t blockNum = j / VECTOR_LENGTH;
+                    const size_t blockIdx = j % VECTOR_LENGTH;
+                    if (transposeA()) {
+                        os << assign(valA, *(ptrMatA + blockNum + blockIdx * M / VECTOR_LENGTH));
+                        for (size_t k = 0; k < VECTOR_LENGTH; k++)
+                            os << assignMAD(accum[blockNum], valA, valB, blockIdx, k);
+                    } else {
+                        os << assign(valA, *(ptrMatA + j * N / VECTOR_LENGTH));
+                        for (size_t k = 0; k < VECTOR_LENGTH; k++)
+                            os << assignMAD(accum[blockNum], valA, valB, blockIdx, k);
+                    }
                 }
-            }
 
-            // next block column of A
-            if (transposeA())
-                os << increment(ptrMatA, M);
-            else
-                os << increment(ptrMatA, 1);
+                // next block column of A
+                if (transposeA())
+                    os << increment(ptrMatA, M);
+                else
+                    os << increment(ptrMatA, 1);
 
-        os << EndBlock();
+            os << EndBlock();
 
-        const ConstantValue<std::string> outC = vecC + wholeHeight() * globalRow;
+            const ConstantValue<std::string> outC = vecC + wholeHeight() * globalRow
+                                                         + pIdx * M / VECTOR_LENGTH;
 
-        for (size_t i = 0; i < wholeHeight(); i++)
-            if (generalizedMatvec())
-                os << assign(*(outC + i),
-                             true //isfloat<SCALAR>()
-                                 ? MADValue(CastValue<scalarN>(alpha),
-                                            accum[i],
-                                            CastValue<scalarN>(beta) * *(outC + i))
-                                 : CastValue<scalarN>(alpha) * accum[i] +
-                                   CastValue<scalarN>(beta) * *(outC + i));
-            else
-                os << assign(*(outC + i), accum[i]);
+            for (size_t i = 0; i < wholeHeight(); i++)
+                if (generalizedMatvec())
+                    os << assign(*(outC + i),
+                                 true //isfloat<SCALAR>()
+                                     ? MADValue(CastValue<scalarN>(alpha),
+                                                accum[i],
+                                                CastValue<scalarN>(beta) * *(outC + i))
+                                     : CastValue<scalarN>(alpha) * accum[i] +
+                                       CastValue<scalarN>(beta) * *(outC + i));
+                else
+                    os << assign(*(outC + i), accum[i]);
+
+        if (1 != packedCalc()) os << EndBlock();
 
         return os << EndBlock(); // end function body
     }

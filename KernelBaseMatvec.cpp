@@ -202,6 +202,22 @@ bool MatvecGeneralized::gemvChanged() const { return _gemvChanged; }
 bool MatvecGeneralized::generalizedMatvec() const { return _generalizedMatvec; }
 
 ////////////////////////////////////////
+// MatvecPackedCalc
+
+MatvecPackedCalc::MatvecPackedCalc()
+    : _packedCalc(1), _packedChanged(false)
+{ }
+
+void MatvecPackedCalc::setPackedCalc(const size_t num) {
+    _packedChanged = (num != _packedCalc);
+    _packedCalc = num;
+}
+
+bool MatvecPackedCalc::packedChanged() const { return _packedChanged; }
+
+size_t MatvecPackedCalc::packedCalc() const { return _packedCalc; }
+
+////////////////////////////////////////
 // KernelBaseMatvec
 
 KernelBaseMatvec::KernelBaseMatvec()
@@ -211,7 +227,8 @@ KernelBaseMatvec::KernelBaseMatvec()
       MatvecInnerBlocking(),
       MatvecExtraParameter(),
       MatvecAttrAutoVec(),
-      MatvecGeneralized()
+      MatvecGeneralized(),
+      MatvecPackedCalc()
 { }
 
 KernelBaseMatvec::~KernelBaseMatvec() { }
@@ -219,6 +236,9 @@ KernelBaseMatvec::~KernelBaseMatvec() { }
 bool KernelBaseMatvec::validParams() const {
 
     return
+        // packed kernels
+        packedCalc() > 0 &&
+
         // all matrix dimensions must be a multiple of vector length
         0 == dimM() % vectorLength() &&
         0 == dimN() % vectorLength() &&
@@ -240,6 +260,9 @@ bool KernelBaseMatvec::getParams(vector<size_t>& params) const {
     bool rc;
     if (rc = validParams()) {
         params.clear();
+
+        // packed kernels
+        params.push_back(packedCalc());
 
         // GEMV or pure multiply only
         params.push_back(generalizedMatvec());
@@ -266,6 +289,10 @@ bool KernelBaseMatvec::getParams(vector<size_t>& params) const {
 
 void KernelBaseMatvec::setParams(const vector<size_t>& params) {
     size_t index = 0;
+
+    // packed kernels
+    const size_t numberKernels = params[index++];
+    setPackedCalc(numberKernels);
 
     // GEMV or pure multiply only
     const size_t GEMV = params[index++];
@@ -308,9 +335,9 @@ vector<size_t> KernelBaseMatvec::localWorkItems() const {
 
 size_t KernelBaseMatvec::numberFlops() const {
     if (generalizedMatvec())
-        return 2 * dimM() * (dimN() + 1);
+        return packedCalc() * 2 * dimM() * (dimN() + 1);
     else
-        return dimM() * (2 * dimN() - 1);
+        return packedCalc() * dimM() * (2 * dimN() - 1);
 }
 
 }; // namespace

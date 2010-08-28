@@ -252,6 +252,27 @@ public:
 };
 
 ////////////////////////////////////////
+// MatmulPackedCalc
+
+class MatmulPackedCalc
+{
+    // number of computational kernels to pack into one GPU kernel
+    size_t _packedCalc;
+
+    // did the number of kernels change?
+    bool   _packedChanged;
+
+public:
+    MatmulPackedCalc();
+
+    void setPackedCalc(const size_t numCalc);
+
+    bool packedChanged() const;
+
+    size_t packedCalc() const;
+};
+
+////////////////////////////////////////
 // KernelBaseMatmul
 
 class KernelBaseMatmul : public KernelInterface,
@@ -261,11 +282,15 @@ class KernelBaseMatmul : public KernelInterface,
                          protected MatmulInnerBlocking,
                          protected MatmulExtraParameter,
                          protected MatmulAttrAutoVec,
-                         protected MatmulGeneralized
+                         protected MatmulGeneralized,
+                         protected MatmulPackedCalc
 {
 public:
     // some OpenCL platforms do not support auto vectorize attribute
     using MatmulAttrAutoVec::setUseAttrAutoVec;
+
+    // packed kernel support
+    using MatmulPackedCalc::setPackedCalc;
 
     // parameters for kernel code generation
     using MatmulGeneralized::setGeneralizedMatmul;

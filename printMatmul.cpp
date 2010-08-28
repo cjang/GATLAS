@@ -28,6 +28,7 @@
 using namespace std;
 
 bool parseOpts(int argc, char *argv[],
+               size_t& packedKernels,
                int& M,
                int& N,
                int& K,
@@ -38,13 +39,14 @@ bool parseOpts(int argc, char *argv[],
                bool& transposeB,
                bool& vectorAttributeHint) {
     int opt;
-    while ((opt = getopt(argc, argv, "habvm:n:k:g:y:x:")) != -1) {
+    while ((opt = getopt(argc, argv, "habvC:m:n:k:g:y:x:")) != -1) {
         switch (opt) {
             case ('h') :
                 cerr << "usage: " << argv[0]
-                     << " -n N [-m M -k K]"
+                     << " [-C numKernels] -n N [-m M -k K]"
                         " -g groupSize -y blockHeight -x extraParam"
                         " [-a] [-b] [-v] [-h]" << endl
+                     << "\t-C number of coalesced kernels (default is 1)" << endl
                      << "\t-m matrix dimension M" << endl
                      << "\t-n matrix dimension N" << endl
                      << "\t-k matrix dimension K" << endl
@@ -56,6 +58,7 @@ bool parseOpts(int argc, char *argv[],
                      << "\t-v disable kernel vector attribute hint (default enabled)" << endl
                      << "\t-h help" << endl;
                 exit(1);
+            case ('C') : packedKernels = atoi(optarg); break;
             case ('m') : M = atoi(optarg); break;
             case ('n') : N = atoi(optarg); break;
             case ('k') : K = atoi(optarg); break;
@@ -71,6 +74,10 @@ bool parseOpts(int argc, char *argv[],
     // validate matrix dimensions
     const size_t VL = VECTOR_LENGTH_MACRO ;
     bool rc = true;
+    if (0 == packedKernels) {
+        cerr << "error: number of kernels to coalesce must be at least one" << endl;
+        rc = false;
+    }
     if (-1 == N) {
         cerr << "error: matrix dimension N must be specified" << endl;
         rc = false;
@@ -128,12 +135,14 @@ bool parseOpts(int argc, char *argv[],
 
 int main(int argc, char *argv[])
 {
+    size_t packedKernels = 1;
     int M = -1, N = -1, K = -1;
     int groupSize = -1, blockHeight = -1, extraParam = -1;
     bool transposeA = false, transposeB = false;
     bool vectorAttributeHint = true;
 
     if (!parseOpts(argc, argv,
+                   packedKernels,
                    M, N, K,
                    groupSize, blockHeight, extraParam,
                    transposeA, transposeB,
@@ -145,6 +154,9 @@ int main(int argc, char *argv[])
 
     // kernel vector attribute hint?
     kernel.setUseAttrAutoVec(vectorAttributeHint);
+
+    // packed kernel support
+    kernel.setPackedCalc(packedKernels);
 
     // matrix dimensions, outer and inner blocking, extra parameters
     kernel.setGeneralizedMatmul( GEMM_MACRO );
@@ -159,8 +171,9 @@ int main(int argc, char *argv[])
         cout << kernel;
 
     } else {
-        cerr << "error: invalid parameters (M, N, K, groupSize, blockHeight, extraParam): "
-             << "(" << M << ", "
+        cerr << "error: invalid parameters (coalescedKernels, M, N, K, groupSize, blockHeight, extraParam): "
+             << "(" << packedKernels << ", "
+                    << M << ", "
                     << N << ", "
                     << K << ", "
                     << groupSize << ", "

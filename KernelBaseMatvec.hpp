@@ -227,6 +227,27 @@ public:
 };
 
 ////////////////////////////////////////
+// MatvecPackedCalc
+
+class MatvecPackedCalc
+{
+    // number of computational kernels to pack into one GPU kernel
+    size_t _packedCalc;
+
+    // did the number of kernels change?
+    bool   _packedChanged;
+
+public:
+    MatvecPackedCalc();
+
+    void setPackedCalc(const size_t numCalc);
+
+    bool packedChanged() const;
+
+    size_t packedCalc() const;
+};
+
+////////////////////////////////////////
 // KernelBaseMatvec
 
 class KernelBaseMatvec : public KernelInterface,
@@ -236,11 +257,15 @@ class KernelBaseMatvec : public KernelInterface,
                          protected MatvecInnerBlocking,
                          protected MatvecExtraParameter,
                          protected MatvecAttrAutoVec,
-                         protected MatvecGeneralized
+                         protected MatvecGeneralized,
+                         protected MatvecPackedCalc
 {
 public:
     // some OpenCL platforms do not support auto vectorize attribute
     using MatvecAttrAutoVec::setUseAttrAutoVec;
+
+    // packed kernel support
+    using MatvecPackedCalc::setPackedCalc;
 
     // parameters for kernel code generation
     using MatvecGeneralized::setGeneralizedMatvec;
@@ -277,20 +302,11 @@ protected:
     std::string assignMAD(const Var< VecType<SCALAR, VECTOR_LENGTH> >& accum,
                           const Var< VecType<SCALAR, VECTOR_LENGTH> >& valA,
                           const Var< VecType<SCALAR, VECTOR_LENGTH> >& valB,
-                          const size_t j,           // output row/component of vector element
+                          const size_t j,           // row/component of vector element
                           const size_t k) const {   // inner product column
-        // matrix A is not transposed
-        return assign(accum[j], MADValue(valA[k], valB[k], accum[j]));
-    }
-                          
-    // matrix vector product accumulation
-    template <typename SCALAR, size_t VECTOR_LENGTH>
-    std::string assignMAD(const Var< VecType<SCALAR, VECTOR_LENGTH> >& accum,
-                          const Var< VecType<SCALAR, VECTOR_LENGTH> >& valA,
-                          const Var< VecType<SCALAR, VECTOR_LENGTH> >& valB,
-                          const size_t k) const {   // inner product column
-        // matrix A is transposed
-        return assign(accum[k], MADValue(valA[k], valB[k], accum[k]));
+        return transposeA()
+                   ? assign(accum[k], MADValue(valA[k], valB[j], accum[k]))
+                   : assign(accum[j], MADValue(valA[k], valB[k], accum[j]));
     }
 
 public:

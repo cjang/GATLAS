@@ -298,6 +298,17 @@ public:
     { }
 
     Var(const std::string& name,
+        const bool inlineValue,
+        const int value,
+        const AddressSpace& q = DEFAULT)
+        : _identifier(name),
+          _qualifier(q),
+          _inlineValue(inlineValue),
+          _value(value)
+    {
+    }
+
+    Var(const std::string& name,
         const AddressSpace& q,
         FunctionDeclaration& funcDecl)
         : _identifier(name),
