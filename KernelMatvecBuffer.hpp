@@ -55,7 +55,7 @@ public:
 
     std::string kernelName() const {
         std::stringstream ss;
-        ss << "matvecbuffer" << nameof<SCALAR>();
+        ss << "matvecbuffer" << nameof<SCALAR>() << VECTOR_LENGTH;
         return ss.str();
     }
 

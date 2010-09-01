@@ -28,7 +28,8 @@
 #include "GatlasAppUtil.hpp"
 #include "GatlasBenchmark.hpp"
 
-#include "KernelFile.hpp"
+#include "KernelMatvecBuffer.hpp"
+#include "KernelMatvecImage.hpp"
 
 #include "using_namespace"
 
@@ -38,6 +39,14 @@ bool parseOpts(int argc, char *argv[],
                string& device,
                string& journalFile,
                size_t& packedKernels,
+               bool& useMembufs,
+               bool& useImages,
+               bool& useFloat,
+               bool& useDouble,
+               size_t& vectorLength,
+               size_t& maxBlockHeight,
+               size_t& maxGroupSize,
+               bool& useGEMV,
                int& M,
                int& N,
                int& groupSize,
@@ -53,18 +62,21 @@ bool parseOpts(int argc, char *argv[],
                bool& vectorAttributeHint,
                bool& printDebug) {
     int opt;
-    while ((opt = getopt(argc, argv, "heasrpvzd:j:C:m:n:g:y:x:t:w:")) != -1) {
+    string kernelType = "<unspecified>";
+    while ((opt = getopt(argc, argv, "heasrpvzGd:j:C:T:m:n:g:y:x:t:w:")) != -1) {
         switch (opt) {
             case ('h') :
                 cerr << "usage: " << argv[0]
-                     << " -d cpu|gpu|acc|cpuX|gpuX|accX -j journalFile [-C numKernels] -n N [-m M]"
+                     << " -d cpu|gpu|acc|cpuX|gpuX|accX -j journalFile -T float1|float2|float4|double1|double2|double4|floatimg|doubleimg -n N [-m M]"
+                        " [-C numKernels]"
                         " [-g groupSize [-y blockHeight [-x extraParam]]]"
                         " [-t numberTrials]"
                         " [-w topN]"
-                        " [-e] [-a] [-s] [-r] [-p] [-v] [-z] [-h]" << endl
+                        " [-G] [-e] [-a] [-s] [-r] [-p] [-v] [-z] [-h]" << endl
                      << "\t-d cpu, gpu or accelerator device, optional X is the device number" << endl
                      << "\t-j journal file" << endl
                      << "\t-C number of coalesced kernels (default is 1)" << endl
+                     << "\t-T kernel type: precision, vector length, memory buffers or images" << endl
                      << "\t-m matrix dimension M" << endl
                      << "\t-n matrix dimension N" << endl
                      << "\t-g work item group width and height" << endl
@@ -72,6 +84,7 @@ bool parseOpts(int argc, char *argv[],
                      << "\t-x extra parameter" << endl
                      << "\t-t number of trials (default is 1)" << endl
                      << "\t-w keep topN (groupSize, blockHeight) combinations" << endl
+                     << "\t-G use general matrix multiply (default no)" << endl
                      << "\t-e use faster expectation maximization optimization (default no)" << endl
                      << "\t-a transpose A (default no)" << endl
                      << "\t-s include PCIe bus data transfer to device in timing (default no)" << endl
@@ -85,6 +98,7 @@ bool parseOpts(int argc, char *argv[],
             case ('d') : device = optarg; break;
             case ('j') : journalFile = optarg; break;
             case ('C') : packedKernels = atoi(optarg); break;
+            case ('T') : kernelType = optarg; break;
             case ('m') : M = atoi(optarg); break;
             case ('n') : N = atoi(optarg); break;
             case ('g') : groupSize = atoi(optarg); break;
@@ -92,6 +106,7 @@ bool parseOpts(int argc, char *argv[],
             case ('x') : extraParam = atoi(optarg); break;
             case ('t') : numberTrials = atoi(optarg); break;
             case ('w') : topN = atoi(optarg); break;
+            case ('G') : useGEMV = true; break;
             case ('e') : emOptimization = true; break;
             case ('a') : transposeA = true; break;
             case ('s') : busTransferToDevice = true; break;
@@ -103,7 +118,6 @@ bool parseOpts(int argc, char *argv[],
     }
 
     // minimal validation of options
-    const size_t VL = VECTOR_LENGTH_MACRO ;
     bool rc = true;
     if (0 != device.find("cpu") && 0 != device.find("gpu") & 0 != device.find("acc")) {
         cerr << "error: invalid device " << device << endl;
@@ -117,6 +131,28 @@ bool parseOpts(int argc, char *argv[],
         cerr << "error: number of kernels to coalesce must be at least one" << endl;
         rc = false;
     }
+    vectorLength = 1;
+    if ("float1" == kernelType) {
+        useMembufs = true; useImages = false; useFloat = true; useDouble = false; vectorLength = 1; maxBlockHeight = 64; maxGroupSize = 16;
+    } else if ("float2" == kernelType) {
+        useMembufs = true; useImages = false; useFloat = true; useDouble = false; vectorLength = 2; maxBlockHeight = 64; maxGroupSize = 16;
+    } else if ("float4" == kernelType) {
+        useMembufs = true; useImages = false; useFloat = true; useDouble = false; vectorLength = 4; maxBlockHeight = 64; maxGroupSize = 16;
+    } else if ("double1" == kernelType) {
+        useMembufs = true; useImages = false; useFloat = false; useDouble = true; vectorLength = 1; maxBlockHeight = 64; maxGroupSize = 16;
+    } else if ("double2" == kernelType) {
+        useMembufs = true; useImages = false; useFloat = false; useDouble = true; vectorLength = 2; maxBlockHeight = 64; maxGroupSize = 16;
+    } else if ("double4" == kernelType) {
+        useMembufs = true; useImages = false; useFloat = false; useDouble = true; vectorLength = 4; maxBlockHeight = 64; maxGroupSize = 16;
+    } else if ("floatimg" == kernelType) {
+        useMembufs = false; useImages = true; useFloat = true; useDouble = false; vectorLength = 4; maxBlockHeight = 64; maxGroupSize = 16;
+    } else if ("doubleimg" == kernelType) {
+        useMembufs = false; useImages = true; useFloat = false; useDouble = true; vectorLength = 2; maxBlockHeight = 64; maxGroupSize = 16;
+    } else {
+        cerr << "error: invalid kernel type of " << kernelType << endl;
+        rc = false;
+    }
+    const size_t VL = vectorLength;
     if (-1 == N) {
         cerr << "error: matrix dimension N must be specified" << endl;
         rc = false;
@@ -164,7 +200,11 @@ bool parseOpts(int argc, char *argv[],
 }
 
 vector< vector<size_t> > getParams(OCLApp& oclApp,
-                                   KERNEL_CLASS_MACRO < SCALAR_MACRO , VECTOR_LENGTH_MACRO > & kernel,
+                                   KernelBaseMatvec & kernel,
+                                   const size_t vectorLength,
+                                   const size_t maxBlockHeight,
+                                   const size_t maxGroupSize,
+                                   const bool useGEMV,
                                    const size_t M, const size_t N,
                                    const bool transposeA,
                                    const size_t groupSize, const size_t blockHeight, const size_t extraParam)
@@ -172,11 +212,11 @@ vector< vector<size_t> > getParams(OCLApp& oclApp,
     vector< vector<size_t> > pargs;
     vector<size_t> a;
 
-    kernel.setGeneralizedMatvec( GEMV_MACRO );
+    kernel.setGeneralizedMatvec( useGEMV );
     kernel.setMatrixDimensions(M, N);
     kernel.setDataLayout(transposeA);
     if (-1 != groupSize) kernel.setWorkGroup(groupSize);
-    if (-1 != blockHeight) kernel.setInnerBlocking(blockHeight, VECTOR_LENGTH_MACRO );
+    if (-1 != blockHeight) kernel.setInnerBlocking(blockHeight, vectorLength );
     if (-1 != extraParam) kernel.setExtraParameter(extraParam);
 
     // all parameters
@@ -192,8 +232,8 @@ vector< vector<size_t> > getParams(OCLApp& oclApp,
 
         // inner blocking and extra parameter are free
         } else if (-1 != groupSize) {
-            for (size_t bh = VECTOR_LENGTH_MACRO ; bh <= MAX_BLOCK_HEIGHT_MACRO; bh++) {
-                kernel.setInnerBlocking(bh, VECTOR_LENGTH_MACRO );
+            for (size_t bh = vectorLength; bh <= maxBlockHeight; bh++) {
+                kernel.setInnerBlocking(bh, vectorLength);
                 for (size_t xp = 0; xp < kernel.totalVariations(); xp++) {
                     kernel.setExtraParameter(xp);
                     if (kernel.getParams(a)) pargs.push_back(a);
@@ -203,25 +243,25 @@ vector< vector<size_t> > getParams(OCLApp& oclApp,
         // work group size is free, inner blocking and extra parameter may be specified
         } else {
             // maximum value of group size
-            const size_t maxPossibleGroupSize = sqrt(oclApp.maxWorkGroupSize());
-            const size_t maxGroupSize = MAX_GROUP_SIZE_MACRO < maxPossibleGroupSize
-                                            ? MAX_GROUP_SIZE_MACRO
-                                            : maxPossibleGroupSize;
+            const size_t largestPossibleGroupSize = sqrt(oclApp.maxWorkGroupSize());
+            const size_t largestGroupSize = maxGroupSize < largestPossibleGroupSize
+                                                ? maxGroupSize
+                                                : largestPossibleGroupSize;
 
             // inner blocking limits
-            const size_t innerBlockingMin = (-1 != blockHeight) ? blockHeight : VECTOR_LENGTH_MACRO ;
-            const size_t innerBlockingMax = (-1 != blockHeight) ? blockHeight : MAX_BLOCK_HEIGHT_MACRO ;
+            const size_t innerBlockingMin = (-1 != blockHeight) ? blockHeight : vectorLength;
+            const size_t innerBlockingMax = (-1 != blockHeight) ? blockHeight : maxBlockHeight;
 
             // extra parameter limits
             const size_t extraParamMin = (-1 != extraParam) ? extraParam : 0;
             const size_t extraParamMax = (-1 != extraParam) ? extraParam + 1 : kernel.totalVariations();
 
             // largest valid group size for problem dimensions
-            for (size_t wg = maxGroupSize; wg > 8; wg--) {
+            for (size_t wg = largestGroupSize; wg > 8; wg--) {
                 kernel.setWorkGroup(wg);
                 bool notEmpty = false;
-                for (size_t bh = innerBlockingMin ; bh <= innerBlockingMax; bh++) {
-                    kernel.setInnerBlocking(bh, VECTOR_LENGTH_MACRO );
+                for (size_t bh = innerBlockingMin; bh <= innerBlockingMax; bh++) {
+                    kernel.setInnerBlocking(bh, vectorLength);
                     for (size_t xp = extraParamMin; xp < extraParamMax; xp++) {
                         kernel.setExtraParameter(xp);
                         if (kernel.getParams(a)) {
@@ -235,8 +275,8 @@ vector< vector<size_t> > getParams(OCLApp& oclApp,
 
             // work group size of 64, same as wavefront on 5870
             kernel.setWorkGroup(8);
-            for (size_t bh = innerBlockingMin ; bh <= innerBlockingMax; bh++) {
-                kernel.setInnerBlocking(bh, VECTOR_LENGTH_MACRO );
+            for (size_t bh = innerBlockingMin; bh <= innerBlockingMax; bh++) {
+                kernel.setInnerBlocking(bh, vectorLength);
                 for (size_t xp = extraParamMin; xp < extraParamMax; xp++) {
                     kernel.setExtraParameter(xp);
                     if (kernel.getParams(a)) pargs.push_back(a);
@@ -354,6 +394,11 @@ int main(int argc, char *argv[])
     string device = "<unspecified>";
     string journalFile;
     size_t packedKernels = 1;
+    bool useMembufs = false, useImages = false;
+    bool useFloat = false, useDouble = false;
+    size_t vectorLength = 0;
+    size_t maxBlockHeight, maxGroupSize;
+    bool useGEMM = false;
     int M = -1, N = -1;
     int groupSize = -1, blockHeight = -1, extraParam = -1;
     size_t numberTrials = 1;
@@ -369,6 +414,14 @@ int main(int argc, char *argv[])
                    device,
                    journalFile,
                    packedKernels,
+                   useMembufs,
+                   useImages,
+                   useFloat,
+                   useDouble,
+                   vectorLength,
+                   maxBlockHeight,
+                   maxGroupSize,
+                   useGEMM,
                    M, N,
                    groupSize, blockHeight, extraParam,
                    numberTrials,
@@ -388,8 +441,35 @@ int main(int argc, char *argv[])
     const size_t device_index = AppUtil::getDeviceIndex(oclBase, device);
     OCLApp oclApp(oclBase, device_index);
 
-    // kernel generator, journal and benchmark object
-    KERNEL_CLASS_MACRO < SCALAR_MACRO , VECTOR_LENGTH_MACRO > kernel;
+    // kernel generator
+    KernelMatvecBuffer < float, 1 > kernel_buf_sp_1;
+    KernelMatvecBuffer < float, 2 > kernel_buf_sp_2;
+    KernelMatvecBuffer < float, 4 > kernel_buf_sp_4;
+    KernelMatvecBuffer < double, 1 > kernel_buf_dp_1;
+    KernelMatvecBuffer < double, 2 > kernel_buf_dp_2;
+    KernelMatvecBuffer < double, 4 > kernel_buf_dp_4;
+    KernelMatvecImage < float, 4 > kernel_img_sp_4;
+    KernelMatvecImage < double, 2 > kernel_img_dp_2;
+    KernelBaseMatvec *ptrKernel = NULL;
+    if (useMembufs) {
+        if (useFloat) {
+            if (1 == vectorLength) ptrKernel = &kernel_buf_sp_1;
+            if (2 == vectorLength) ptrKernel = &kernel_buf_sp_2;
+            if (4 == vectorLength) ptrKernel = &kernel_buf_sp_4;
+        }
+        if (useDouble) {
+            if (1 == vectorLength) ptrKernel = &kernel_buf_dp_1;
+            if (2 == vectorLength) ptrKernel = &kernel_buf_dp_2;
+            if (4 == vectorLength) ptrKernel = &kernel_buf_dp_4;
+        }
+    }
+    if (useImages) {
+        if (useFloat) { ptrKernel = &kernel_img_sp_4; }
+        if (useDouble) { ptrKernel = &kernel_img_dp_2; }
+    }
+    KernelBaseMatvec& kernel = *ptrKernel;
+
+    // journal and benchmark object
     Journal journal(journalFile);
     Bench bench(oclApp, kernel, journal);
 
@@ -404,6 +484,10 @@ int main(int argc, char *argv[])
         // brute force benchmark timings
         vector< vector<size_t> > pargs = getParams(oclApp,
                                                    kernel,
+                                                   vectorLength,
+                                                   maxBlockHeight,
+                                                   maxGroupSize,
+                                                   useGEMM,
                                                    M, N,
                                                    transposeA,
                                                    groupSize, blockHeight, extraParam);
@@ -454,6 +538,10 @@ int main(int argc, char *argv[])
 
                 pargs = getParams(oclApp,
                                   kernel,
+                                  vectorLength,
+                                  maxBlockHeight,
+                                  maxGroupSize,
+                                  useGEMM,
                                   M, N,
                                   transposeA,
                                   groupSize, blockHeight, extraParam);
@@ -518,6 +606,10 @@ int main(int argc, char *argv[])
     if (numberTrials > 1) {
         pargs = getParams(oclApp,
                           kernel,
+                          vectorLength,
+                          maxBlockHeight,
+                          maxGroupSize,
+                          useGEMM,
                           M, N,
                           transposeA,
                           bestGroupSize, bestBlockHeight, bestExtraParam);
