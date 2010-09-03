@@ -133,21 +133,21 @@ bool parseOpts(int argc, char *argv[],
     }
     vectorLength = 1;
     if ("float1" == kernelType) {
-        useMembufs = true; useImages = false; useFloat = true; useDouble = false; vectorLength = 1; maxBlockHeight = 64; maxGroupSize = 16;
+        useMembufs = true; useImages = false; useFloat = true; useDouble = false; vectorLength = 1; maxBlockHeight = 64; maxGroupSize = 256;
     } else if ("float2" == kernelType) {
-        useMembufs = true; useImages = false; useFloat = true; useDouble = false; vectorLength = 2; maxBlockHeight = 64; maxGroupSize = 16;
+        useMembufs = true; useImages = false; useFloat = true; useDouble = false; vectorLength = 2; maxBlockHeight = 64; maxGroupSize = 256;
     } else if ("float4" == kernelType) {
-        useMembufs = true; useImages = false; useFloat = true; useDouble = false; vectorLength = 4; maxBlockHeight = 64; maxGroupSize = 16;
+        useMembufs = true; useImages = false; useFloat = true; useDouble = false; vectorLength = 4; maxBlockHeight = 64; maxGroupSize = 256;
     } else if ("double1" == kernelType) {
-        useMembufs = true; useImages = false; useFloat = false; useDouble = true; vectorLength = 1; maxBlockHeight = 64; maxGroupSize = 16;
+        useMembufs = true; useImages = false; useFloat = false; useDouble = true; vectorLength = 1; maxBlockHeight = 64; maxGroupSize = 256;
     } else if ("double2" == kernelType) {
-        useMembufs = true; useImages = false; useFloat = false; useDouble = true; vectorLength = 2; maxBlockHeight = 64; maxGroupSize = 16;
+        useMembufs = true; useImages = false; useFloat = false; useDouble = true; vectorLength = 2; maxBlockHeight = 64; maxGroupSize = 256;
     } else if ("double4" == kernelType) {
-        useMembufs = true; useImages = false; useFloat = false; useDouble = true; vectorLength = 4; maxBlockHeight = 64; maxGroupSize = 16;
+        useMembufs = true; useImages = false; useFloat = false; useDouble = true; vectorLength = 4; maxBlockHeight = 64; maxGroupSize = 256;
     } else if ("floatimg" == kernelType) {
-        useMembufs = false; useImages = true; useFloat = true; useDouble = false; vectorLength = 4; maxBlockHeight = 64; maxGroupSize = 16;
+        useMembufs = false; useImages = true; useFloat = true; useDouble = false; vectorLength = 4; maxBlockHeight = 64; maxGroupSize = 256;
     } else if ("doubleimg" == kernelType) {
-        useMembufs = false; useImages = true; useFloat = false; useDouble = true; vectorLength = 2; maxBlockHeight = 64; maxGroupSize = 16;
+        useMembufs = false; useImages = true; useFloat = false; useDouble = true; vectorLength = 2; maxBlockHeight = 64; maxGroupSize = 256;
     } else {
         cerr << "error: invalid kernel type of " << kernelType << endl;
         rc = false;
@@ -243,7 +243,7 @@ vector< vector<size_t> > getParams(OCLApp& oclApp,
         // work group size is free, inner blocking and extra parameter may be specified
         } else {
             // maximum value of group size
-            const size_t largestPossibleGroupSize = sqrt(oclApp.maxWorkGroupSize());
+            const size_t largestPossibleGroupSize = oclApp.maxWorkGroupSize();
             const size_t largestGroupSize = maxGroupSize < largestPossibleGroupSize
                                                 ? maxGroupSize
                                                 : largestPossibleGroupSize;
