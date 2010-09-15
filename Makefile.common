@@ -46,7 +46,8 @@ GATLAS_OBJECT_CODE = \
 
 KERNEL_OBJECT_CODE = \
 	KernelBaseMatmul.o \
-	KernelBaseMatvec.o
+	KernelBaseMatvec.o \
+	KernelBaseSaxpy.o
 
 LIB_OBJECT_CODE = \
 	$(OCL_OBJECT_CODE) \
@@ -58,20 +59,20 @@ EXECUTABLES = \
 	probeAutoVectorize \
 	purgeJournal \
 	bench_matmul print_matmul \
-	bench_matvec print_matvec
+	bench_matvec print_matvec \
+	bench_saxpy print_saxpy
 
+
+# default target
+all : binaries
 
 # default target for all binaries
-binaries : libgatlas.a Makefile $(EXECUTABLES)
+binaries : libgatlas.a $(EXECUTABLES)
 
 # archive library
 libgatlas.a : $(LIB_OBJECT_CODE)
 	$(AR) qc $@ $(LIB_OBJECT_CODE)
 	$(RANLIB) $@
-
-# symbolic link to common makefile
-Makefile : Makefile.common
-	ln -s $< $@
 
 # OpenCL information utility
 oclInfo : oclInfo.o libgatlas.a
@@ -113,7 +114,21 @@ print_matvec.o : printMatvec.cpp
 print_matvec : print_matvec.o libgatlas.a
 	$(GNU_CXX) -o $@ $< $(USE_LDFLAGS) $(GATLAS_LDFLAGS) -lm
 
+#
+# saxpy
+#
+
+bench_saxpy.o : benchSaxpy.cpp
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(USE_CFLAGS) $< -o $@
+bench_saxpy : bench_saxpy.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(USE_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+
+print_saxpy.o : printSaxpy.cpp
+	$(GNU_CXX) -c $(GNU_CXXFLAGS) $(USE_CFLAGS) $< -o $@
+print_saxpy : print_saxpy.o libgatlas.a
+	$(GNU_CXX) -o $@ $< $(USE_LDFLAGS) $(GATLAS_LDFLAGS) -lm
+
 
 clean :
-	rm -f *.o KernelFile.hpp libgatlas.a Makefile $(EXECUTABLES)
+	rm -f *.o KernelFile.hpp libgatlas.a $(EXECUTABLES)
 
