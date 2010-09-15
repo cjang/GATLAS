@@ -595,7 +595,7 @@ int main(int argc, char *argv[])
                         // if this happens during maximization, then just give up
                         cerr << "error: no good kernels found for group size " << bestGroupSize
                              << " and block height " << bestBlockHeight
-                             << ", giving up"
+                             << " so giving up" << endl
                              << "***DONE***" << endl;
                         exit(1);
                     }
