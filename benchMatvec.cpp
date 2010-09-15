@@ -84,7 +84,7 @@ bool parseOpts(int argc, char *argv[],
                      << "\t-x extra parameter" << endl
                      << "\t-t number of trials (default is 1)" << endl
                      << "\t-w keep topN (groupSize, blockHeight) combinations" << endl
-                     << "\t-G use general matrix multiply (default no)" << endl
+                     << "\t-G use general matrix vector multiply (default no)" << endl
                      << "\t-e use faster expectation maximization optimization (default no)" << endl
                      << "\t-a transpose A (default no)" << endl
                      << "\t-s include PCIe bus data transfer to device in timing (default no)" << endl
@@ -257,7 +257,7 @@ vector< vector<size_t> > getParams(OCLApp& oclApp,
             const size_t extraParamMax = (-1 != extraParam) ? extraParam + 1 : kernel.totalVariations();
 
             // largest valid group size for problem dimensions
-            for (size_t wg = largestGroupSize; wg > 8; wg--) {
+            for (size_t wg = largestGroupSize; wg > 64; wg--) {
                 kernel.setWorkGroup(wg);
                 bool notEmpty = false;
                 for (size_t bh = innerBlockingMin; bh <= innerBlockingMax; bh++) {
@@ -274,7 +274,7 @@ vector< vector<size_t> > getParams(OCLApp& oclApp,
             }
 
             // work group size of 64, same as wavefront on 5870
-            kernel.setWorkGroup(8);
+            kernel.setWorkGroup(64);
             for (size_t bh = innerBlockingMin; bh <= innerBlockingMax; bh++) {
                 kernel.setInnerBlocking(bh, vectorLength);
                 for (size_t xp = extraParamMin; xp < extraParamMax; xp++) {
@@ -580,7 +580,7 @@ int main(int argc, char *argv[])
                         // if this happens during maximization, then just give up
                         cerr << "error: no good kernels found for group size " << bestGroupSize
                              << " and block height " << bestBlockHeight
-                             << ", giving up"
+                             << " so giving up" << endl
                              << "***DONE***" << endl;
                         exit(1);
                     }
