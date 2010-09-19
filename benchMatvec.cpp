@@ -521,6 +521,7 @@ int main(int argc, char *argv[])
     // using EM
     size_t bestGroupSize, bestBlockHeight, bestExtraParam = 0;
     int bestIndex = -1;
+    int loopCount = 0; // stop infinite loop if there are no good kernels
     vector< vector<size_t> > pargs;
     bool foundMax = false;
     while (! foundMax) {
@@ -575,6 +576,12 @@ int main(int argc, char *argv[])
                         // expectation lower bound could not be found for given value of extra parameter
                         // so try another one
                         bestExtraParam = (bestExtraParam + 1) % kernel.totalVariations();
+                        // infinite loop case if there are no kernels at all
+                        if (kernel.totalVariations() == loopCount++) {
+                            cerr << "error: no good kernels found so giving up" << endl
+                                 << "***DONE***" << endl;
+                            exit(1);
+                        }
                         continue;
                     } else {
                         // if this happens during maximization, then just give up
@@ -584,6 +591,8 @@ int main(int argc, char *argv[])
                              << "***DONE***" << endl;
                         exit(1);
                     }
+                } else {
+                    loopCount = 0;
                 }
                 kernel.setParams(pargs[bestIndex]);
 
