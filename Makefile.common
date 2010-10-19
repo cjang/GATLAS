@@ -6,11 +6,10 @@ ATI_SDK = $(ATISTREAMSDKROOT)
 NVIDIA_SDK = $(NVIDIACUDASDKROOT)
 
 GNU_CC = gcc
-GNU_CFLAGS = -std=c99 -funsafe-math-optimizations -funroll-all-loops
+GNU_CFLAGS = -std=c99 -O2
 
 GNU_CXX = g++
-GNU_CXXFLAGS = -funsafe-math-optimizations -funroll-all-loops
-#-O3 -funroll-all-loops  -fexpensive-optimizations -ffast-math -finline-functions -frerun-loop-opt -static-libgcc
+GNU_CXXFLAGS = -O2
 
 AR=ar
 RANLIB=ranlib
