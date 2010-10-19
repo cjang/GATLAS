@@ -13,7 +13,7 @@ Let's benchmark SGEMM using images on a single GPU system using EM search with
 the final benchmark as an average over ten trials. The calculation uses square
 matrices of size 3520 x 3520.
 
-    ./bench_sgemmimg -d gpu -j my_device_journal_file -n 3520 -e -t 10
+    ./bench_matmul -d gpu -T floatimg -G -j my_device_journal_file -n 3520 -e -t 10
 
 With my HD 5870 with SDK v2.2 and driver 10.7b, this reaches 1368 gigaFLOPS.
 Note that PCIe bus data transfer is not included in the benchmarking. Only
@@ -32,12 +32,12 @@ accumulation loop ordering. In this case, the matrix dimensions of M/N/K =
 
 There is a corresponding command line tool to printing out this best kernel.
 
-    ./print_sgemmimg -n 3520 -g 8 -y 8 -x 1
+    ./print_matmul -T floatimg -G -n 3520 -g 8 -y 8 -x 1
 
 Higher performance is possible if matrix A is transposed (column major). If we
 add a "-a" to the "bench" and "print" commands above, performance increases.
 
-    ./bench_sgemmimg -d gpu -j my_device_journal_file -n 3520 -e -t 10 -a
+    ./bench_matmul -d gpu -T floatimg -G -j my_device_journal_file -n 3520 -e -t 10 -a
 
 On my HD 5870, this reaches 1418 gigaFLOPS.
 
@@ -58,7 +58,7 @@ real journal file, the memoization of the EM optimization search will take the
 previously sampled timing without passing any work to the GPU. That's not what
 we want here.
 
-    ./bench_sgemmimg -d gpu -j dummy_file -n 3520 -g 8 -y 8 -x 3 -a -p
+    ./bench_matmul -d gpu -T floatimg -G -j dummy_file -n 3520 -g 8 -y 8 -x 3 -a -p
 
 If the result has low error, we have some confidence it is ok. It is not that
 unusual to find that kernels which seem ok using a test pattern (such as A and
@@ -89,7 +89,7 @@ clock time so any memory paging and I/O will affect measured times.
 
 Let's try using vector length of two (double2) for M/N/K = 1024.
 
-    ./bench_dmmbuf2 -d gpu -j my_device_journal_file -n 1024 -e -t 10
+    ./bench_matmul -d gpu -T double2 -j my_device_journal_file -n 1024 -e -t 10
 
 On my HD 5870 using SDK v2.2 and Catalyst 10.7b, this gives 75 gigaFLOPS.
 
@@ -97,7 +97,7 @@ On my HD 5870 using SDK v2.2 and Catalyst 10.7b, this gives 75 gigaFLOPS.
 
 This best kernel should be checked to see if the output is good.
 
-    ./bench_dmmbuf2 -d gpu -j dummy_file -n 1024 -g 8 -y 2 -x 7 -p
+    ./bench_matmul -d gpu -T double2 -j dummy_file -n 1024 -g 8 -y 2 -x 7 -p
 
 It looks ok.
 
@@ -106,7 +106,7 @@ It looks ok.
 
 Let's do that a few more times to make sure.
 
-    ./bench_dmmbuf2 -d gpu -j dummy_file -n 1024 -g 8 -y 2 -x 7 -p -t 3
+    ./bench_matmul -d gpu -T double2 -j dummy_file -n 1024 -g 8 -y 2 -x 7 -p -t 3
 
 It still looks ok.
 
@@ -116,7 +116,7 @@ It still looks ok.
 
 Now let's print out this kernel.
 
-    ./print_dmmbuf2 -n 1024 -g 8 -y 2 -x 7
+    ./print_matmul -T double2 -n 1024 -g 8 -y 2 -x 7
 
 
 ******************************************************************************
@@ -129,7 +129,7 @@ Experience is therefore limited with NVIDIA GPUs.
 
 Let's try using a scalar kernel at M/N/K = 640.
 
-    ./bench_dgemmbuf1 -d gpu -j my_device_journal_file -n 640 -e -t 10
+    ./bench_matmul -d gpu -T double1 -G -j my_device_journal_file -n 640 -e -t 10
 
 This reaches 126 gigaFLOPS on my GTX 480.
 
@@ -139,11 +139,11 @@ As above, the best kernel can be printed using the kernel parameters. In this
 case, the best kernel uses 8 x 8 work groups and 10 x 1 inner blocking with
 doubles. The extra parameter is 2.
 
-    ./print_dgemmbuf1 -n 640 -g 8 -y 10 -x 2
+    ./print_matmul -T double1 -G -n 640 -g 8 -y 10 -x 2
 
 To check this best kernel for correctness, the "-p" switch is used.
 
-    ./bench_dgemmbuf1 -d gpu -j dummy_file -n 640 -g 8 -y 10 -x 2 -p
+    ./bench_matmul -d gpu -T double1 -G -j dummy_file -n 640 -g 8 -y 10 -x 2 -p
 
 The output on my GTX 480 using SDK v3.1 and driver 256.40 is:
 
@@ -154,7 +154,7 @@ The output is bad! This kernel generates corrupt output.
 
 Let's try another kind of kernel using a vector length of four (double4).
 
-    ./bench_dgemmbuf4 -d gpu0 -j my_device_journal_file -n 640 -e -t 10
+    ./bench_matmul -d gpu0 -T double4 -G -j my_device_journal_file -n 640 -e -t 10
 
 This reaches 75 gigaFLOPS on my GTX 480.
 
@@ -163,7 +163,7 @@ This reaches 75 gigaFLOPS on my GTX 480.
 Is the kernel output correct? To be sure, let's check with random matrix data
 ten times.
 
-    ./bench_dgemmbuf4 -d gpu0 -j dummy_file -n 640 -g 8 -y 5 -x 5 -p -t 10
+    ./bench_matmul -d gpu0 -T double4 -G -j dummy_file -n 640 -g 8 -y 5 -x 5 -p -t 10
 
 The output is:
 
@@ -183,7 +183,7 @@ the auto-tuning. This will take longer than usual due to the cost of the CPU
 reference calculation for each timing trial. Normally, only a test pattern is
 used to check the kernel output.
 
-    ./bench_dgemmbuf4 -d gpu0 -j dummy_file -n 640 -e -t 10 -p
+    ./bench_matmul -d gpu0 -T double4 -G -j dummy_file -n 640 -e -t 10 -p
 
 This seems to be working but at the end fails just as before.
 
