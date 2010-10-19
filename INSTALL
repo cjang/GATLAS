@@ -53,39 +53,13 @@ To clean up:
 ****************************************
 * Executable binaries and scripts
 
-DGEMM:
+bench_matmul, print_matmul - matrix multiply (GEMM and C = A * B)
+bench_matvec, print_matvec - matrix vector multiplication
+bench_saxpy, print_saxpy   - scalar alpha x plus y (SAXPY)
 
-    bench_dgemmbuf1  print_dgemmbuf1
-    bench_dgemmbuf2  print_dgemmbuf2
-    bench_dgemmbuf4  print_dgemmbuf4
-    bench_dgemmimg   print_dgemmimg
-
-SGEMM:
-
-    bench_sgemmbuf1  print_sgemmbuf1
-    bench_sgemmbuf2  print_sgemmbuf2
-    bench_sgemmbuf4  print_sgemmbuf4
-    bench_sgemmimg   print_sgemmimg
-
-Matrix multiply only (double precision):
-
-    bench_dmmbuf1    print_dmmbuf1
-    bench_dmmbuf2    print_dmmbuf2
-    bench_dmmbuf4    print_dmmbuf4
-    bench_dmmimg     print_dmmimg
-
-Matrix multiply only (single precision):
-
-    bench_smmbuf1    print_smmbuf1
-    bench_smmbuf2    print_smmbuf2
-    bench_smmbuf4    print_smmbuf4
-    bench_smmimg     print_smmimg
-
-Utilities:
-
-    oclInfo             - see all devices and info
-    probeAutoVectorize  - test support of vector attribute hint
-    purgeJournal        - trim benchmark journal file
-    retry               - benchmark retry loop (for compiler seg faults)
-    wavedims            - optimal square matrix dimensions for ATI
+oclInfo             - see all devices and info
+probeAutoVectorize  - test support of vector attribute hint
+purgeJournal        - trim benchmark journal file
+retry               - benchmark retry loop (for compiler seg faults)
+wavedims            - optimal square matrix dimensions for ATI
 

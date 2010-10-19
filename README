@@ -3,7 +3,7 @@ GATLAS - GPU Automatically Tuned Linear Algebra Software
 Chris Jang
 fastkor@gmail.com
 
-August 16 2010
+October 18 2010
 
 Download source code: http://github.com/cjang/GATLAS
 Website: http://golem5.org/gatlas
@@ -15,6 +15,7 @@ HISTORY
 
 May 2010 - First generation design developed for ATI Radeon 5870 GPU
 Aug 2010 - Second generation with ATI 5870, 5770, 5670, 5440 and NVIDIA 480
+Oct 2010 - Third generation with experimental branch merged back to master
 
 ===============================================================================
 THANKS
