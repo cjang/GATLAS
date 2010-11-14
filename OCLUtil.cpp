@@ -149,6 +149,8 @@ idxlist(const int v0,
     return l;
 }
 
+template <> bool isfloat<double>() { return false; }
 template <> bool isfloat<float>() { return true; }
+template <> bool isfloat<unsigned int>() { return false; }
 
 } // namespace

@@ -70,7 +70,7 @@ template <typename T> T* alloc_memalign(const size_t);
 template <typename T> T* alloc_memalign(const size_t, const size_t ALIGNMENT);
 template <typename SCALAR, size_t N> SCALAR* alloc_memalign(const size_t);
 
-template <typename T> bool isfloat() { return false; }
+template <typename T> bool isfloat();
 
 #include "OCLUtil.tcc"
 
